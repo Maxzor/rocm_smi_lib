@@ -46,6 +46,10 @@
 #include <sys/utsname.h>
 #include <pthread.h>
 #include <string.h>
+#include <unistd.h>
+#include <poll.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
 
 #include <sstream>
 #include <algorithm>
@@ -66,31 +70,47 @@
 #include "rocm_smi/rocm_smi_exception.h"
 #include "rocm_smi/rocm_smi_counters.h"
 #include "rocm_smi/rocm_smi_kfd.h"
+#include "rocm_smi/rocm_smi_io_link.h"
 
 #include "rocm_smi/rocm_smi64Config.h"
 
 static const uint32_t kMaxOverdriveLevel = 20;
 
+static rsmi_status_t errno_to_rsmi_status(uint32_t err) {
+  switch (err) {
+    case 0:      return RSMI_STATUS_SUCCESS;
+    case ESRCH:  return RSMI_STATUS_NOT_FOUND;
+    case EACCES: return RSMI_STATUS_PERMISSION;
+    case EPERM:
+    case ENOENT: return RSMI_STATUS_NOT_SUPPORTED;
+    case EBADF:
+    case EISDIR: return RSMI_STATUS_FILE_ERROR;
+    case EINTR:  return RSMI_STATUS_INTERRUPT;
+    case EIO:    return RSMI_STATUS_UNEXPECTED_SIZE;
+    case ENXIO:  return RSMI_STATUS_UNEXPECTED_DATA;
+    case EBUSY:  return RSMI_STATUS_BUSY;
+    default:     return RSMI_STATUS_UNKNOWN_ERROR;
+  }
+}
+
 static rsmi_status_t handleException() {
   try {
     throw;
   } catch (const std::bad_alloc& e) {
-    debug_print("RSMI exception: BadAlloc\n");
     return RSMI_STATUS_OUT_OF_RESOURCES;
   } catch (const amd::smi::rsmi_exception& e) {
     debug_print("Exception caught: %s.\n", e.what());
     return e.error_code();
   } catch (const std::exception& e) {
-    debug_print("Unhandled exception: %s\n", e.what());
-    assert(false && "Unhandled exception.");
+    debug_print("Exception caught: %s\n", e.what());
     return RSMI_STATUS_INTERNAL_EXCEPTION;
   } catch (const std::nested_exception& e) {
-    debug_print("Callback threw, forwarding.\n");
-    e.rethrow_nested();
+    debug_print("Callback threw.\n");
     return RSMI_STATUS_INTERNAL_EXCEPTION;
+  } catch (int erno) {
+    return errno_to_rsmi_status(erno);
   } catch (...) {
-    assert(false && "Unhandled exception.");
-    abort();
+    debug_print("Unknown exception caught.\n");
     return RSMI_STATUS_INTERNAL_EXCEPTION;
   }
 }
@@ -126,7 +146,12 @@ static rsmi_status_t handleException() {
 
 #define DEVICE_MUTEX \
     amd::smi::pthread_wrap _pw(*get_mutex(dv_ind)); \
-    amd::smi::ScopedPthread _lock(_pw);
+    amd::smi::RocmSMI& smi_ = amd::smi::RocmSMI::getInstance(); \
+    bool blocking_ = !(smi_.init_options() && RSMI_INIT_FLAG_RESRV_TEST1); \
+    amd::smi::ScopedPthread _lock(_pw, blocking_); \
+    if (!blocking_ && _lock.mutex_not_acquired()) { \
+      return RSMI_STATUS_BUSY; \
+    }
 
 /* This group of macros is used to facilitate checking of support for rsmi_dev*
  * "getter" functions. When the return buffer is set to nullptr, the macro will
@@ -137,24 +162,31 @@ static rsmi_status_t handleException() {
 // This macro assumes dev already available
 #define CHK_API_SUPPORT_ONLY(RT_PTR, VR, SUB_VR) \
     if ((RT_PTR) == nullptr) { \
-      if (!dev->DeviceAPISupported(__FUNCTION__, (VR), (SUB_VR))) { \
-        return RSMI_STATUS_NOT_SUPPORTED; \
-      }  \
-      return RSMI_STATUS_INVALID_ARGS; \
-    } \
+      try { \
+        if (!dev->DeviceAPISupported(__FUNCTION__, (VR), (SUB_VR))) { \
+          return RSMI_STATUS_NOT_SUPPORTED; \
+        }  \
+        return RSMI_STATUS_INVALID_ARGS; \
+      } catch (const amd::smi::rsmi_exception& e) { \
+        debug_print( \
+             "Exception caught when checking if API is supported %s.\n", \
+                                                                  e.what()); \
+        return RSMI_STATUS_INVALID_ARGS; \
+      } \
+    }
 
 #define CHK_SUPPORT(RT_PTR, VR, SUB_VR)  \
     GET_DEV_FROM_INDX \
     CHK_API_SUPPORT_ONLY((RT_PTR), (VR), (SUB_VR))
 
 #define CHK_SUPPORT_NAME_ONLY(RT_PTR) \
-    CHK_SUPPORT((RT_PTR), RSMI_DEFAULT_VARIANT, RSMI_DEFAULT_VARIANT) \
+    CHK_SUPPORT((RT_PTR), RSMI_DEFAULT_VARIANT, RSMI_DEFAULT_VARIANT)
 
 #define CHK_SUPPORT_VAR(RT_PTR, VR) \
-    CHK_SUPPORT((RT_PTR), (VR), RSMI_DEFAULT_VARIANT) \
+    CHK_SUPPORT((RT_PTR), (VR), RSMI_DEFAULT_VARIANT)
 
 #define CHK_SUPPORT_SUBVAR_ONLY(RT_PTR, SUB_VR) \
-    CHK_SUPPORT((RT_PTR), RSMI_DEFAULT_VARIANT, (SUB_VR)) \
+    CHK_SUPPORT((RT_PTR), RSMI_DEFAULT_VARIANT, (SUB_VR))
 
 static pthread_mutex_t *get_mutex(uint32_t dv_ind) {
   amd::smi::RocmSMI& smi = amd::smi::RocmSMI::getInstance();
@@ -166,22 +198,6 @@ static pthread_mutex_t *get_mutex(uint32_t dv_ind) {
   assert(dev != nullptr);
 
   return dev->mutex();
-}
-
-static rsmi_status_t errno_to_rsmi_status(uint32_t err) {
-  switch (err) {
-    case 0:      return RSMI_STATUS_SUCCESS;
-    case ESRCH:  return RSMI_STATUS_NOT_FOUND;
-    case EACCES: return RSMI_STATUS_PERMISSION;
-    case EPERM:
-    case ENOENT: return RSMI_STATUS_NOT_SUPPORTED;
-    case EBADF:
-    case EISDIR: return RSMI_STATUS_FILE_ERROR;
-    case EINTR:  return RSMI_STATUS_INTERRUPT;
-    case EIO:    return RSMI_STATUS_UNEXPECTED_SIZE;
-    case ENXIO:  return RSMI_STATUS_UNEXPECTED_DATA;
-    default:     return RSMI_STATUS_UNKNOWN_ERROR;
-  }
 }
 
 static uint64_t get_multiplier_from_str(char units_char) {
@@ -439,9 +455,12 @@ static rsmi_status_t get_dev_mon_value(amd::smi::MonitorTypes type,
     return errno_to_rsmi_status(ret);
   }
 
-  if (val_str == "") {
-    return RSMI_STATUS_NO_DATA;
+  if (!amd::smi::IsInteger(val_str)) {
+    std::cerr << "Expected integer value from monitor,"
+                                " but got \"" << val_str << "\"" << std::endl;
+    return RSMI_STATUS_UNEXPECTED_DATA;
   }
+
   *val = std::stoi(val_str);
 
   return RSMI_STATUS_SUCCESS;
@@ -465,13 +484,9 @@ static rsmi_status_t get_dev_mon_value(amd::smi::MonitorTypes type,
   }
 
   if (!amd::smi::IsInteger(val_str)) {
-    std::cerr << "Expected integer value, but got \"" << val_str << "\"" <<
-                                                                    std::endl;
-  }
-  assert(amd::smi::IsInteger(val_str));
-
-  if (val_str == "") {
-    return RSMI_STATUS_NO_DATA;
+    std::cerr << "Expected integer value from monitor,"
+                                " but got \"" << val_str << "\"" << std::endl;
+    return RSMI_STATUS_UNEXPECTED_DATA;
   }
 
   *val = std::stoul(val_str);
@@ -532,9 +547,29 @@ static bool is_power_of_2(uint64_t n) {
 rsmi_status_t
 rsmi_init(uint64_t flags) {
   TRY
-
   amd::smi::RocmSMI& smi = amd::smi::RocmSMI::getInstance();
-  smi.Initialize(flags);
+  std::lock_guard<std::mutex> guard(*smi.bootstrap_mutex());
+
+  if (smi.ref_count() == INT32_MAX) {
+    return RSMI_STATUS_REFCOUNT_OVERFLOW;
+  }
+
+  (void)smi.ref_count_inc();
+
+  // If smi.Initialize() throws, we should clean up and dec. ref_count_.
+  // Otherwise, if no issues, the Dismiss() will prevent the ref_count_
+  // decrement.
+  MAKE_NAMED_SCOPE_GUARD(refGuard, [&]() { (void)smi.ref_count_dec(); });
+
+  if (smi.ref_count() == 1) {
+    try {
+      smi.Initialize(flags);
+    } catch(...) {
+      smi.Cleanup();
+      throw;
+    }
+  }
+  refGuard.Dismiss();
 
   return RSMI_STATUS_SUCCESS;
   CATCH
@@ -547,9 +582,17 @@ rsmi_shut_down(void) {
   TRY
 
   amd::smi::RocmSMI& smi = amd::smi::RocmSMI::getInstance();
+  std::lock_guard<std::mutex> guard(*smi.bootstrap_mutex());
 
-  smi.Cleanup();
+  if (smi.ref_count() == 0) {
+    return RSMI_STATUS_INIT_ERROR;
+  }
 
+  (void)smi.ref_count_dec();
+
+  if (smi.ref_count() == 0) {
+    smi.Cleanup();
+  }
   return RSMI_STATUS_SUCCESS;
   CATCH
 }
@@ -729,6 +772,22 @@ rsmi_dev_pci_id_get(uint32_t dv_ind, uint64_t *bdfid) {
   *bdfid |= (domain & 0xFFFFFFFF) << 32;
 
   return RSMI_STATUS_SUCCESS;
+  CATCH
+}
+
+rsmi_status_t
+rsmi_topo_numa_affinity_get(uint32_t dv_ind, uint32_t *numa_node) {
+  TRY
+  rsmi_status_t ret;
+  uint64_t val = 0;
+
+  CHK_SUPPORT_NAME_ONLY(numa_node)
+
+  DEVICE_MUTEX
+  ret = get_dev_value_int(amd::smi::kDevNumaNode, dv_ind, &val);
+
+  *numa_node = static_cast<uint32_t>(val);
+  return ret;
   CATCH
 }
 
@@ -1182,6 +1241,30 @@ static rsmi_status_t set_power_profile(uint32_t dv_ind,
   CATCH
 }
 
+static rsmi_status_t topo_get_numa_node_number(uint32_t dv_ind,
+                     uint32_t *numa_node_number) {
+  TRY
+
+  GET_DEV_AND_KFDNODE_FROM_INDX
+
+  *numa_node_number = kfd_node->numa_node_number();
+
+  return RSMI_STATUS_SUCCESS;
+  CATCH
+}
+
+static rsmi_status_t topo_get_numa_node_weight(uint32_t dv_ind,
+                     uint64_t *weight) {
+  TRY
+
+  GET_DEV_AND_KFDNODE_FROM_INDX
+
+  *weight = kfd_node->numa_node_weight();
+
+  return RSMI_STATUS_SUCCESS;
+  CATCH
+}
+
 rsmi_status_t
 rsmi_dev_gpu_clk_freq_get(uint32_t dv_ind, rsmi_clk_type_t clk_type,
                                                         rsmi_frequencies_t *f) {
@@ -1625,10 +1708,13 @@ rsmi_dev_name_get(uint32_t dv_ind, char *name, size_t len) {
 
 rsmi_status_t
 rsmi_dev_brand_get(uint32_t dv_ind, char *brand, uint32_t len) {
+  TRY
   CHK_SUPPORT_NAME_ONLY(brand)
   if (len == 0) {
     return RSMI_STATUS_INVALID_ARGS;
   }
+  DEVICE_MUTEX
+
   std::map<std::string, std::string> brand_names = {
     {"D05121", "mi25"},
     {"D05131", "mi25"},
@@ -1663,6 +1749,7 @@ rsmi_dev_brand_get(uint32_t dv_ind, char *brand, uint32_t len) {
   // If there is no SKU match, return marketing name instead
   rsmi_dev_name_get(dv_ind, brand, len);
   return RSMI_STATUS_SUCCESS;
+  CATCH
 }
 
 rsmi_status_t
@@ -1895,15 +1982,10 @@ rsmi_dev_temp_metric_get(uint32_t dv_ind, uint32_t sensor_type,
   assert(dev->monitor() != nullptr);
   std::shared_ptr<amd::smi::Monitor> m = dev->monitor();
 
-  uint32_t err  = m->setSensorLabelMap();
-  if (err) {
-     return errno_to_rsmi_status(err);
-  }
-
-  // getSensorIndex will throw an out of range exception if sensor_type is not
-  // found
+  // getTempSensorIndex will throw an out of range exception if sensor_type is
+  // not found
   uint32_t sensor_index =
-         m->getSensorIndex(static_cast<rsmi_temperature_type_t>(sensor_type));
+     m->getTempSensorIndex(static_cast<rsmi_temperature_type_t>(sensor_type));
 
   CHK_API_SUPPORT_ONLY(temperature, metric, sensor_index)
 
@@ -2348,6 +2430,15 @@ rsmi_status_string(rsmi_status_t status, const char **status_string) {
                                                      "type that was expected";
       break;
 
+    case RSMI_STATUS_BUSY:
+      *status_string = "A resource or mutex could not be acquired "
+                                           "because it is already being used";
+    break;
+
+    case RSMI_STATUS_REFCOUNT_OVERFLOW:
+      *status_string = "An internal reference counter exceeded INT32_MAX";
+      break;
+
     case RSMI_STATUS_UNKNOWN_ERROR:
       *status_string = "An unknown error prevented the call from completing"
                           " successfully";
@@ -2493,6 +2584,7 @@ rsmi_status_t rsmi_dev_serial_number_get(uint32_t dv_ind,
   }
 
   TRY
+  DEVICE_MUTEX
 
   std::string val_str;
   rsmi_status_t ret = get_dev_value_str(amd::smi::kDevSerialNumber,
@@ -2832,7 +2924,17 @@ rsmi_compute_process_info_by_pid_get(uint32_t pid,
     return RSMI_STATUS_INVALID_ARGS;
   }
 
-  int err = amd::smi::GetProcessInfoForPID(pid, proc);
+  std::unordered_set<uint64_t> gpu_set;
+  amd::smi::RocmSMI& smi = amd::smi::RocmSMI::getInstance();
+  auto it = smi.kfd_node_map().begin();
+
+  while (it != smi.kfd_node_map().end()) {
+    uint64_t gpu_id = it->first;
+    gpu_set.insert(gpu_id);
+    it++;
+  }
+
+  int err = amd::smi::GetProcessInfoForPID(pid, proc, &gpu_set);
 
   if (err) {
     return errno_to_rsmi_status(err);
@@ -2893,6 +2995,158 @@ rsmi_dev_xgmi_error_reset(uint32_t dv_ind) {
   ret = get_dev_value_int(amd::smi::kDevXGMIError, dv_ind, &status_code);
   return ret;
 
+  CATCH
+}
+
+rsmi_status_t
+rsmi_topo_get_numa_node_number(uint32_t dv_ind, uint32_t *numa_node) {
+  TRY
+
+  return topo_get_numa_node_number(dv_ind, numa_node);
+  CATCH
+}
+
+rsmi_status_t
+rsmi_topo_get_link_weight(uint32_t dv_ind_src, uint32_t dv_ind_dst,
+                          uint64_t *weight) {
+  TRY
+
+  uint32_t dv_ind = dv_ind_src;
+  GET_DEV_AND_KFDNODE_FROM_INDX
+  DEVICE_MUTEX
+
+  if (weight == nullptr) {
+    return RSMI_STATUS_INVALID_ARGS;
+  }
+
+  rsmi_status_t status;
+  uint32_t node_ind_dst;
+  uint32_t ret = smi.get_node_index(dv_ind_dst, &node_ind_dst);
+
+  if (!ret) {
+    amd::smi::IO_LINK_TYPE type;
+    ret = kfd_node->get_io_link_type(node_ind_dst, &type);
+    if (!ret) {
+      if (type == amd::smi::IOLINK_TYPE_XGMI) {
+        ret = kfd_node->get_io_link_weight(node_ind_dst, weight);
+        if (!ret)
+          status = RSMI_STATUS_SUCCESS;
+        else
+          status = RSMI_STATUS_INIT_ERROR;
+      } else {
+        assert(!"Unexpected IO Link type read");
+        status = RSMI_STATUS_NOT_SUPPORTED;
+      }
+    } else {
+      *weight = kfd_node->numa_node_weight();  // from src GPU to it's CPU node
+      uint64_t numa_weight_dst;
+      status = topo_get_numa_node_weight(dv_ind_dst, &numa_weight_dst);
+      // from dst GPU to it's CPU node
+      if (status == RSMI_STATUS_SUCCESS) {
+        *weight = *weight + numa_weight_dst;
+        uint32_t numa_number_src = kfd_node->numa_node_number();
+        uint32_t numa_number_dst;
+        status = topo_get_numa_node_number(dv_ind_dst, &numa_number_dst);
+        if (status == RSMI_STATUS_SUCCESS) {
+          if (numa_number_src != numa_number_dst) {
+            uint64_t io_link_weight;
+            ret = smi.get_io_link_weight(numa_number_src, numa_number_dst,
+                                         &io_link_weight);
+            if (!ret) {
+              *weight = *weight + io_link_weight;
+              // from src numa CPU node to dst numa CPU node
+            } else {
+              *weight = *weight + 10;
+              // More than one CPU hops, hard coded 10
+            }
+          }
+          status = RSMI_STATUS_SUCCESS;
+        } else {
+          assert(!"Error to read numa node number");
+          status = RSMI_STATUS_INIT_ERROR;
+        }
+      } else {
+        assert(!"Error to read numa node weight");
+        status = RSMI_STATUS_INIT_ERROR;
+      }
+    }
+  } else {
+    status = RSMI_STATUS_INVALID_ARGS;
+  }
+
+  return status;
+  CATCH
+}
+
+rsmi_status_t
+rsmi_topo_get_link_type(uint32_t dv_ind_src, uint32_t dv_ind_dst,
+                        uint64_t *hops, RSMI_IO_LINK_TYPE *type) {
+  TRY
+
+  uint32_t dv_ind = dv_ind_src;
+  GET_DEV_AND_KFDNODE_FROM_INDX
+
+  if (hops == nullptr) {
+    return RSMI_STATUS_INVALID_ARGS;
+  }
+
+  if (type == nullptr) {
+    return RSMI_STATUS_INVALID_ARGS;
+  }
+
+  rsmi_status_t status;
+  uint32_t node_ind_dst;
+  uint32_t ret = smi.get_node_index(dv_ind_dst, &node_ind_dst);
+
+  if (!ret) {
+    amd::smi::IO_LINK_TYPE io_link_type;
+    ret = kfd_node->get_io_link_type(node_ind_dst, &io_link_type);
+    if (!ret) {
+      if (io_link_type == amd::smi::IOLINK_TYPE_XGMI) {
+        *type = RSMI_IOLINK_TYPE_XGMI;
+        *hops = 1;
+        status = RSMI_STATUS_SUCCESS;
+      } else {
+        assert(!"Unexpected IO Link type read");
+        status = RSMI_STATUS_NOT_SUPPORTED;
+      }
+    } else {
+      uint32_t numa_number_dst;
+      status = topo_get_numa_node_number(dv_ind_dst, &numa_number_dst);
+      if (status == RSMI_STATUS_SUCCESS) {
+        uint32_t numa_number_src = kfd_node->numa_node_number();
+        if (numa_number_src == numa_number_dst) {
+          *hops = 2;  // same CPU node
+        } else {
+          uint64_t io_link_weight;
+          ret = smi.get_io_link_weight(numa_number_src, numa_number_dst,
+                                       &io_link_weight);
+          if (!ret)
+            *hops = 3;  // from src CPU node to dst CPU node
+          else
+            *hops = 4;  // More than one CPU hops, hard coded as 4
+        }
+
+        amd::smi::IO_LINK_TYPE numa_node_type = kfd_node->numa_node_type();
+        if (numa_node_type == amd::smi::IOLINK_TYPE_PCIEXPRESS) {
+          *type = RSMI_IOLINK_TYPE_PCIEXPRESS;
+          status = RSMI_STATUS_SUCCESS;
+        } else if (numa_node_type == amd::smi::IOLINK_TYPE_XGMI) {
+          *type = RSMI_IOLINK_TYPE_XGMI;
+          status = RSMI_STATUS_SUCCESS;
+        } else {
+          status = RSMI_STATUS_INIT_ERROR;
+        }
+      } else {
+        assert(!"Error to get numa node number");
+        status = RSMI_STATUS_INIT_ERROR;
+      }
+    }
+  } else {
+    status = RSMI_STATUS_INVALID_ARGS;
+  }
+
+  return status;
   CATCH
 }
 
@@ -3074,7 +3328,10 @@ rsmi_func_iter_value_get(rsmi_func_id_iter_handle_t handle,
 
     case SUBVARIANT_ITER:
       sub_var_itr = reinterpret_cast<SubVariantIt *>(handle->func_id_iter);
-      value->id = *(*sub_var_itr);
+
+      // The hwmon file index that is appropriate for the rsmi user is stored
+      // at bit position MONITOR_TYPE_BIT_POSITION.
+      value->id = *(*sub_var_itr) >> MONITOR_TYPE_BIT_POSITION;
       break;
 
     default:
@@ -3134,4 +3391,241 @@ rsmi_func_iter_next(rsmi_func_id_iter_handle_t handle) {
   return RSMI_STATUS_SUCCESS;
 
   CATCH
+}
+
+
+static bool check_evt_notif_support(int kfd_fd) {
+  struct kfd_ioctl_get_version_args args = {0, 0};
+
+  if (ioctl(kfd_fd, AMDKFD_IOC_GET_VERSION, &args) == -1) {
+    return RSMI_STATUS_INIT_ERROR;
+  }
+
+  if (args.minor_version < 3) {
+    return false;
+  }
+  return true;
+}
+
+static const char *kPathKFDIoctl = "/dev/kfd";
+
+rsmi_status_t
+rsmi_event_notification_init(uint32_t dv_ind) {
+  TRY
+  GET_DEV_FROM_INDX
+
+  std::lock_guard<std::mutex> guard(*smi.kfd_notif_evt_fh_mutex());
+  if (smi.kfd_notif_evt_fh() == -1) {
+    assert(smi.kfd_notif_evt_fh_refcnt() == 0);
+    int kfd_fd = open(kPathKFDIoctl, O_RDWR | O_CLOEXEC);
+
+    if (kfd_fd <= 0) {
+      return RSMI_STATUS_FILE_ERROR;
+    }
+
+    if (!check_evt_notif_support(kfd_fd)) {
+      close(kfd_fd);
+      return RSMI_STATUS_NOT_SUPPORTED;
+    }
+
+    smi.set_kfd_notif_evt_fh(kfd_fd);
+  }
+  (void)smi.kfd_notif_evt_fh_refcnt_inc();
+  struct kfd_ioctl_smi_events_args args;
+
+  assert(dev->kfd_gpu_id() <= UINT32_MAX);
+  args.gpuid = static_cast<uint32_t>(dev->kfd_gpu_id());
+
+  int ret = ioctl(smi.kfd_notif_evt_fh(), AMDKFD_IOC_SMI_EVENTS, &args);
+  if (ret < 0) {
+    return errno_to_rsmi_status(errno);
+  }
+  if (args.anon_fd < 1) {
+    return RSMI_STATUS_NO_DATA;
+  }
+
+  dev->set_evt_notif_anon_fd(args.anon_fd);
+  FILE *anon_file_ptr = fdopen(args.anon_fd, "r");
+  if (anon_file_ptr == nullptr) {
+    close(dev->evt_notif_anon_fd());
+    return errno_to_rsmi_status(errno);
+  }
+  dev->set_evt_notif_anon_file_ptr(anon_file_ptr);
+
+  return RSMI_STATUS_SUCCESS;
+
+  CATCH
+}
+
+rsmi_status_t
+rsmi_event_notification_mask_set(uint32_t dv_ind, uint64_t mask) {
+  TRY
+  GET_DEV_FROM_INDX
+
+  if (dev->evt_notif_anon_fd() == -1) {
+    return RSMI_INITIALIZATION_ERROR;
+  }
+  ssize_t ret = write(dev->evt_notif_anon_fd(), &mask, sizeof(uint64_t));
+
+  if (ret == -1) {
+    return errno_to_rsmi_status(errno);
+  }
+
+  return RSMI_STATUS_SUCCESS;
+  CATCH
+}
+
+rsmi_status_t
+rsmi_event_notification_get(int timeout_ms,
+                     uint32_t *num_elem, rsmi_evt_notification_data_t *data) {
+  TRY
+
+  if (num_elem == nullptr || data == nullptr || *num_elem == 0) {
+    return RSMI_STATUS_INVALID_ARGS;
+  }
+
+  uint32_t buffer_size = *num_elem;
+  *num_elem = 0;
+
+  rsmi_evt_notification_data_t *data_item;
+
+  //  struct pollfd {
+  //      int   fd;         /* file descriptor */
+  //      short events;     /* requested events */
+  //      short revents;    /* returned events */
+  //  };
+  std::vector<struct pollfd> fds;
+  amd::smi::RocmSMI& smi = amd::smi::RocmSMI::getInstance();
+  std::vector<uint32_t> fd_indx_to_dev_id;
+
+  for (uint32_t i = 0; i < smi.monitor_devices().size(); ++i) {
+    if (smi.monitor_devices()[i]->evt_notif_anon_fd() == -1) {
+      continue;
+    }
+    fds.push_back({smi.monitor_devices()[i]->evt_notif_anon_fd(),
+                                                     POLLIN | POLLRDNORM, 0});
+    fd_indx_to_dev_id.push_back(i);
+  }
+
+  auto fill_data_buffer = [&](bool did_poll) {
+    for (uint32_t i = 0; i < fds.size(); ++i) {
+      if (did_poll) {
+        if (!(fds[i].revents & (POLLIN | POLLRDNORM))) {
+          continue;
+        }
+      }
+
+      if (*num_elem >= buffer_size) {
+        return;
+      }
+
+      FILE *anon_fp =
+         smi.monitor_devices()[fd_indx_to_dev_id[i]]->evt_notif_anon_file_ptr();
+      data_item =
+           reinterpret_cast<rsmi_evt_notification_data_t *>(&data[*num_elem]);
+
+      uint64_t event;
+      while (fscanf(anon_fp, "%lx %63s\n", &event,
+                          reinterpret_cast<char *>(&data_item->message)) == 2) {
+        /* Output is in format as "event information\n"
+         * Both event are expressed in hex.
+         * information is a string
+         */
+        data_item->event = (rsmi_evt_notification_type_t)event;
+        data_item->dv_ind = fd_indx_to_dev_id[i];
+        ++(*num_elem);
+
+        if (*num_elem >= buffer_size) {
+          break;
+        }
+        data_item =
+             reinterpret_cast<rsmi_evt_notification_data_t *>(&data[*num_elem]);
+      }
+    }
+  };
+
+  // Collect any left-over events from a poll in a previous call to
+  // rsmi_event_notification_get()
+  fill_data_buffer(false);
+
+  if (*num_elem < buffer_size && errno != EAGAIN) {
+    return errno_to_rsmi_status(errno);
+  } else if (*num_elem >= buffer_size) {
+    return RSMI_STATUS_SUCCESS;
+  }
+
+  // We still have buffer left, see if there are any new events
+  int p_ret = poll(fds.data(), fds.size(), timeout_ms);
+  if (p_ret > 0) {
+    fill_data_buffer(true);
+  } else if (p_ret < 0) {
+    return errno_to_rsmi_status(errno);
+  }
+  if (*num_elem == 0) {
+    return RSMI_STATUS_NO_DATA;
+  }
+
+  return RSMI_STATUS_SUCCESS;
+  CATCH
+}
+
+rsmi_status_t rsmi_event_notification_stop(uint32_t dv_ind) {
+  TRY
+  GET_DEV_FROM_INDX
+  std::lock_guard<std::mutex> guard(*smi.kfd_notif_evt_fh_mutex());
+
+  if (dev->evt_notif_anon_fd() == -1) {
+    return RSMI_STATUS_INVALID_ARGS;
+  }
+//  close(dev->evt_notif_anon_fd());
+  FILE *anon_fp = smi.monitor_devices()[dv_ind]->evt_notif_anon_file_ptr();
+  fclose(anon_fp);
+  assert(errno == 0 || errno == EAGAIN);
+  dev->set_evt_notif_anon_file_ptr(nullptr);
+  dev->set_evt_notif_anon_fd(-1);
+
+  if (smi.kfd_notif_evt_fh_refcnt_dec() == 0) {
+    int ret = close(smi.kfd_notif_evt_fh());
+    smi.set_kfd_notif_evt_fh(-1);
+    if (ret < 0) {
+      return errno_to_rsmi_status(errno);
+    }
+  }
+
+  return RSMI_STATUS_SUCCESS;
+  CATCH
+}
+
+// UNDOCUMENTED FUNCTIONS
+// This functions are not declared in rocm_smi.h. They are either not fully
+// supported, or to be used for test purposes.
+
+// This function acquires a mutex and waits for a number of seconds
+rsmi_status_t
+rsmi_test_sleep(uint32_t dv_ind, uint32_t seconds) {
+//  DEVICE_MUTEX
+  amd::smi::pthread_wrap _pw(*get_mutex(dv_ind));
+  amd::smi::RocmSMI& smi_ = amd::smi::RocmSMI::getInstance();
+  bool blocking_ = !(smi_.init_options() && RSMI_INIT_FLAG_RESRV_TEST1);
+  amd::smi::ScopedPthread _lock(_pw, blocking_);
+  if (!blocking_ && _lock.mutex_not_acquired()) {
+    return RSMI_STATUS_BUSY;
+  }
+
+  sleep(seconds);
+  return RSMI_STATUS_SUCCESS;
+}
+
+int32_t
+rsmi_test_refcount(uint64_t refcnt_type) {
+  (void)refcnt_type;
+
+  amd::smi::RocmSMI& smi = amd::smi::RocmSMI::getInstance();
+  std::lock_guard<std::mutex> guard(*smi.bootstrap_mutex());
+
+  if (smi.ref_count() == 0 && smi.monitor_devices().size() != 0) {
+    return -1;
+  }
+
+  return smi.ref_count();
 }

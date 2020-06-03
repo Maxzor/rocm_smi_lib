@@ -5,7 +5,7 @@
  * The University of Illinois/NCSA
  * Open Source License (NCSA)
  *
- * Copyright (c) 2019, Advanced Micro Devices, Inc.
+ * Copyright (c) 2020, Advanced Micro Devices, Inc.
  * All rights reserved.
  *
  * Developed by:
@@ -42,77 +42,32 @@
  * DEALINGS WITH THE SOFTWARE.
  *
  */
+#ifndef TESTS_ROCM_SMI_TEST_FUNCTIONAL_HW_TOPOLOGY_READ_H_
+#define TESTS_ROCM_SMI_TEST_FUNCTIONAL_HW_TOPOLOGY_READ_H_
 
-#include <stdint.h>
-#include <stddef.h>
+#include "rocm_smi_test/test_base.h"
 
-#include <iostream>
-#include <string>
+class TestHWTopologyRead : public TestBase {
+ public:
+  TestHWTopologyRead();
 
-#include "gtest/gtest.h"
-#include "rocm_smi/rocm_smi.h"
-#include "rocm_smi_test/functional/gpu_busy_read.h"
-#include "rocm_smi_test/test_common.h"
+  // @Brief: Destructor for test case of TestHWTopologyRead
+  virtual ~TestHWTopologyRead();
 
-TestGPUBusyRead::TestGPUBusyRead() : TestBase() {
-  set_title("RSMI GPU Busy Read Test");
-  set_description("The GPU Busy Read tests verifies that the gpu busy "
-                   "percentage can be read properly.");
-}
+  // @Brief: Setup the environment for measurement
+  virtual void SetUp();
 
-TestGPUBusyRead::~TestGPUBusyRead(void) {
-}
+  // @Brief: Core measurement execution
+  virtual void Run();
 
-void TestGPUBusyRead::SetUp(void) {
-  TestBase::SetUp();
+  // @Brief: Clean up and retrieve the resource
+  virtual void Close();
 
-  return;
-}
+  // @Brief: Display  results
+  virtual void DisplayResults() const;
 
-void TestGPUBusyRead::DisplayTestInfo(void) {
-  TestBase::DisplayTestInfo();
-}
+  // @Brief: Display information about what this test does
+  virtual void DisplayTestInfo(void);
+};
 
-void TestGPUBusyRead::DisplayResults(void) const {
-  TestBase::DisplayResults();
-  return;
-}
-
-void TestGPUBusyRead::Close() {
-  // This will close handles opened within rsmitst utility calls and call
-  // rsmi_shut_down(), so it should be done after other hsa cleanup
-  TestBase::Close();
-}
-
-
-void TestGPUBusyRead::Run(void) {
-  rsmi_status_t err;
-  uint32_t val_ui32;
-
-  TestBase::Run();
-  if (setup_failed_) {
-    std::cout << "** SetUp Failed for this test. Skipping.**" << std::endl;
-    return;
-  }
-
-  for (uint32_t i = 0; i < num_monitor_devs(); ++i) {
-    PrintDeviceHeader(i);
-
-    err = rsmi_dev_busy_percent_get(i, &val_ui32);
-    if (err != RSMI_STATUS_SUCCESS) {
-      if (err == RSMI_STATUS_FILE_ERROR) {
-        IF_VERB(STANDARD) {
-          std::cout << "\t**GPU Busy Percent: Not supported on this machine"
-                                                                << std::endl;
-        }
-      } else {
-        CHK_ERR_ASRT(err)
-      }
-    } else {
-      IF_VERB(STANDARD) {
-        std::cout << "\t**GPU Busy Percent (Percent Idle):" << std::dec <<
-                     val_ui32 << " (" << 100 - val_ui32 << ")" << std::endl;
-      }
-    }
-  }
-}
+#endif  // TESTS_ROCM_SMI_TEST_FUNCTIONAL_HW_TOPOLOGY_READ_H_

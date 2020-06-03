@@ -97,6 +97,10 @@ void TestProcInfoRead::Run(void) {
   rsmi_process_info_t *procs = nullptr;
 
   TestBase::Run();
+  if (setup_failed_) {
+    std::cout << "** SetUp Failed for this test. Skipping.**" << std::endl;
+    return;
+  }
 
   uint32_t num_devices;
   err = rsmi_num_monitor_devices(&num_devices);
@@ -162,9 +166,14 @@ void TestProcInfoRead::Run(void) {
     for (uint32_t j = 0; j < num_proc_found; j++) {
       err = rsmi_compute_process_gpus_get(procs[j].process_id, dev_inds,
                                                                  &amt_allocd);
-      CHK_ERR_ASRT(err)
-      ASSERT_LE(amt_allocd, num_devices);
-
+      if (err == RSMI_STATUS_NOT_FOUND) {
+        std::cout << "\t**Process " << procs[j].process_id <<
+                                                     " is no longer present.";
+        continue;
+      } else {
+        CHK_ERR_ASRT(err);
+        ASSERT_LE(amt_allocd, num_devices);
+      }
       std::cout << "\t**Process " << procs[j].process_id <<
                                            " is using devices with indices: ";
       uint32_t i;

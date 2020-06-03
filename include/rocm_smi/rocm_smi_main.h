@@ -53,7 +53,9 @@
 #include <cstdint>
 #include <unordered_map>
 #include <map>
+#include <mutex>  // NOLINT
 
+#include "rocm_smi/rocm_smi_io_link.h"
 #include "rocm_smi/rocm_smi_kfd.h"
 #include "rocm_smi/rocm_smi_device.h"
 #include "rocm_smi/rocm_smi_monitor.h"
@@ -72,8 +74,8 @@ class RocmSMI {
     void Initialize(uint64_t flags);
     void Cleanup(void);
 
-    static std::vector<std::shared_ptr<amd::smi::Device>>&
-                                  monitor_devices() {return s_monitor_devices;}
+    std::vector<std::shared_ptr<amd::smi::Device>>&
+                                  monitor_devices() {return monitor_devices_;}
     uint32_t DiscoverAmdgpuDevices(void);
     uint32_t DiscoverAMDPowerMonitors(bool force_update = false);
 
@@ -90,21 +92,51 @@ class RocmSMI {
     std::map<uint64_t, std::shared_ptr<KFDNode>> & kfd_node_map(void) {
       return kfd_node_map_;}
 
+    int kfd_notif_evt_fh(void) const {return kfd_notif_evt_fh_;}
+    void set_kfd_notif_evt_fh(int fd) {kfd_notif_evt_fh_ = fd;}
+    std::mutex *kfd_notif_evt_fh_mutex(void) {return &kfd_notif_evt_fh_mutex_;}
+    std::mutex *bootstrap_mutex(void) {return &bootstrap_mutex_;}
+
+    uint32_t ref_count(void) const {return ref_count_;}
+    uint32_t ref_count_inc(void) {return ++ref_count_;}
+    uint32_t ref_count_dec(void) {return --ref_count_;}
+
+    uint32_t kfd_notif_evt_fh_refcnt(void) const {
+                                             return kfd_notif_evt_fh_refcnt_;}
+    uint32_t kfd_notif_evt_fh_refcnt_inc(void) {
+                                           return ++kfd_notif_evt_fh_refcnt_;}
+    uint32_t kfd_notif_evt_fh_refcnt_dec(void) {
+                                           return --kfd_notif_evt_fh_refcnt_;}
+    int get_io_link_weight(uint32_t node_from, uint32_t node_to,
+                           uint64_t *weight);
+    int get_node_index(uint32_t dv_ind, uint32_t *node_ind);
+
  private:
     std::vector<std::shared_ptr<Device>> devices_;
     std::map<uint64_t, std::shared_ptr<KFDNode>> kfd_node_map_;
     std::vector<std::shared_ptr<Monitor>> monitors_;
     std::vector<std::shared_ptr<PowerMon>> power_mons_;
     std::set<std::string> amd_monitor_types_;
+    std::map<std::pair<uint32_t, uint32_t>, std::shared_ptr<IOLink>>
+      io_link_map_;
+    std::map<uint32_t, uint32_t> dev_ind_to_node_ind_map_;
     void AddToDeviceList(std::string dev_name);
     void GetEnvVariables(void);
     uint32_t DiscoverAMDMonitors(void);
 
-    static std::vector<std::shared_ptr<amd::smi::Device>> s_monitor_devices;
+    std::vector<std::shared_ptr<amd::smi::Device>> monitor_devices_;
 
     RocmSMI_env_vars env_vars_;
     uint64_t init_options_;
     uint32_t euid_;
+
+    int kfd_notif_evt_fh_;
+    std::mutex kfd_notif_evt_fh_mutex_;
+    uint32_t kfd_notif_evt_fh_refcnt_;  // Access to this should be protected
+                                        // by kfd_notif_evt_fh_mutex_
+    std::mutex bootstrap_mutex_;
+    uint32_t ref_count_;  // Access to this should be protected
+                          // by bootstrap_mutex_
 };
 
 }  // namespace smi

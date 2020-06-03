@@ -52,6 +52,8 @@ extern "C" {
 
 #include <stddef.h>
 
+#include "rocm_smi/kfd_ioctl.h"
+
 /** \file rocm_smi.h
  *  Main header file for the ROCm SMI library.
  *  All required function, structure, enum, etc. definitions should be defined
@@ -118,6 +120,12 @@ typedef enum {
                                          //!< input
   RSMI_STATUS_UNEXPECTED_DATA,           //!< The data read or provided to
                                          //!< function is not what was expected
+  RSMI_STATUS_BUSY,                      //!< A resource or mutex could not be
+                                         //!< acquired because it is already
+                                         //!< being used
+  RSMI_STATUS_REFCOUNT_OVERFLOW,          //!< An internal reference counter
+                                         //!< exceeded INT32_MAX
+
   RSMI_STATUS_UNKNOWN_ERROR = 0xFFFFFFFF,  //!< An unknown error occurred
 } rsmi_status_t;
 
@@ -128,12 +136,13 @@ typedef enum {
  */
 
 typedef enum {
-  RSMI_INIT_FLAG_ALL_GPUS      = 0x1,    //!< Attempt to add all GPUs found
+  RSMI_INIT_FLAG_ALL_GPUS   = 0x1,       //!< Attempt to add all GPUs found
                                          //!< (including non-AMD) to the list
                                          //!< of devices from which SMI
                                          //!< information can be retrieved. By
                                          //!< default, only AMD devices are
                                          //!<  ennumerated by RSMI.
+  RSMI_INIT_FLAG_RESRV_TEST1 = 0x800000000000000,  //!< Reserved for test
 } rsmi_init_flags_t;
 
 /**
@@ -248,6 +257,28 @@ typedef struct {
 } rsmi_counter_value_t;
 
 /**
+ * Event notification event types
+ */
+typedef enum {
+  RSMI_EVT_NOTIF_VMFAULT = KFD_SMI_EVENT_VMFAULT,  //!< VM page fault
+  RSMI_EVT_NOTIF_FIRST = RSMI_EVT_NOTIF_VMFAULT,
+
+  RSMI_EVT_NOTIF_LAST = RSMI_EVT_NOTIF_VMFAULT
+} rsmi_evt_notification_type_t;
+
+//! Maximum number of characters an event notification message will be
+#define MAX_EVENT_NOTIFICATION_MSG_SIZE 64
+
+/**
+ * Event notification data returned from event notification API
+ */
+typedef struct {
+    uint32_t dv_ind;        //!< Index of device that corresponds to the event
+    rsmi_evt_notification_type_t event;     //!< Event type
+    char message[MAX_EVENT_NOTIFICATION_MSG_SIZE];  //!< Event message
+} rsmi_evt_notification_data_t;
+
+/**
  * Clock types
  */
 typedef enum {
@@ -326,7 +357,8 @@ typedef enum {
                                                //!< temperature
   RSMI_TEMP_TYPE_MEMORY,                       //!< VRAM temperature
 
-  RSMI_TEMP_TYPE_LAST = RSMI_TEMP_TYPE_MEMORY
+  RSMI_TEMP_TYPE_LAST = RSMI_TEMP_TYPE_MEMORY,
+  RSMI_TEMP_TYPE_INVALID = 0xFFFFFFFF          //!< Invalid type
 } rsmi_temperature_type_t;
 
 /**
@@ -488,6 +520,17 @@ typedef enum {
                                       //!<  at the next window.
   RSMI_MEM_PAGE_STATUS_UNRESERVABLE   //!< Unable to reserve this page
 } rsmi_memory_page_status_t;
+
+/**
+ * @brief Types for IO Link
+ */
+typedef enum _RSMI_IO_LINK_TYPE {
+  RSMI_IOLINK_TYPE_UNDEFINED      = 0,         //!< unknown type.
+  RSMI_IOLINK_TYPE_PCIEXPRESS     = 1,         //!< PCI Express
+  RSMI_IOLINK_TYPE_XGMI           = 2,         //!< XGMI
+  RSMI_IOLINK_TYPE_NUMIOLINKTYPES,             //!< Number of IO Link types
+  RSMI_IOLINK_TYPE_SIZE           = 0xFFFFFFFF //!< Max of IO Link types
+} RSMI_IO_LINK_TYPE;
 
 /**
  * @brief Reserved Memory Page Record
@@ -669,6 +712,7 @@ typedef struct {
 typedef struct {
     uint32_t process_id;  //!< Process ID
     uint32_t pasid;    //!< PASID
+    uint64_t vram_usage;  //!< VRAM usage
 } rsmi_process_info_t;
 
 
@@ -1164,6 +1208,30 @@ rsmi_dev_pci_bandwidth_get(uint32_t dv_ind, rsmi_pcie_bandwidth_t *bandwidth);
  *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
  */
 rsmi_status_t rsmi_dev_pci_id_get(uint32_t dv_ind, uint64_t *bdfid);
+
+/**
+ *  @brief Get the NUMA node associated with a device
+ *
+ *  @details Given a device index @p dv_ind and a pointer to a uint32_t @p
+ *  numa_node, this function will retrieve the NUMA node value associated
+ *  with device @p dv_ind and store the value at location pointed to by
+ *  @p numa_node.
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[inout] numa_node pointer to location where NUMA node value will
+ *  be written.
+ *  If this parameter is nullptr, this function will return
+ *  ::RSMI_STATUS_INVALID_ARGS if the function is supported with the provided,
+ *  arguments and ::RSMI_STATUS_NOT_SUPPORTED if it is not supported with the
+ *  provided arguments.
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ */
+rsmi_status_t rsmi_topo_numa_affinity_get(uint32_t dv_ind, uint32_t *numa_node);
 
 /**
  *  @brief Get PCIe traffic information
@@ -2558,6 +2626,85 @@ rsmi_dev_xgmi_error_reset(uint32_t dv_ind);
 
 /** @} */  // end of SysInfo
 
+/*****************************************************************************/
+/** @defgroup HWTopo Hardware Topology Functions
+ *  These functions are used to query Hardware topology.
+ *  @{
+ */
+
+/**
+ *  @brief Retrieve the NUMA CPU node number for a device
+ *
+ *  @details Given a device index @p dv_ind, and a pointer to an
+ *  uint32_t @p numa_node, this function will write the
+ *  node number of NUMA CPU for the device @p dv_ind to the memory
+ *  pointed to by @p numa_node.
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[inout] numa_node A pointer to an uint32_t to which the
+ *  numa node number should be written.
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ *
+ */
+rsmi_status_t
+rsmi_topo_get_numa_node_number(uint32_t dv_ind, uint32_t *numa_node);
+
+/**
+ *  @brief Retrieve the weight for a connection between 2 GPUs
+ *
+ *  @details Given a source device index @p dv_ind_src and
+ *  a destination device index @p dv_ind_dst, and a pointer to an
+ *  uint64_t @p weight, this function will write the
+ *  weight for the connection between the device @p dv_ind_src
+ *  and @p dv_ind_dst to the memory pointed to by @p weight.
+ *
+ *  @param[in] dv_ind_src the source device index
+ *
+ *  @param[in] dv_ind_dst the destination device index
+ *
+ *  @param[inout] weight A pointer to an uint64_t to which the
+ *  weight for the connection should be written.
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ *
+ */
+rsmi_status_t
+rsmi_topo_get_link_weight(uint32_t dv_ind_src, uint32_t dv_ind_dst,
+                          uint64_t *weight);
+
+/**
+ *  @brief Retrieve the hops and the connection type between 2 GPUs
+ *
+ *  @details Given a source device index @p dv_ind_src and
+ *  a destination device index @p dv_ind_dst, and a pointer to an
+ *  uint64_t @p hops and a pointer to an RSMI_IO_LINK_TYPE @p type,
+ *  this function will write the number of hops and the connection type
+ *  between the device @p dv_ind_src and @p dv_ind_dst to the memory
+ *  pointed to by @p hops and @p type.
+ *
+ *  @param[in] dv_ind_src the source device index
+ *
+ *  @param[in] dv_ind_dst the destination device index
+ *
+ *  @param[inout] hops A pointer to an uint64_t to which the
+ *  hops for the connection should be written.
+ *
+ *  @param[inout] type A pointer to an ::RSMI_IO_LINK_TYPE to which the
+ *  type for the connection should be written.
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ *
+ */
+rsmi_status_t
+rsmi_topo_get_link_type(uint32_t dv_ind_src, uint32_t dv_ind_dst,
+                        uint64_t *hops, RSMI_IO_LINK_TYPE *type);
+
+/** @} */  // end of HWTopo
 
 /*****************************************************************************/
 /** @defgroup APISupport Supported Functions
@@ -2782,6 +2929,109 @@ rsmi_func_iter_value_get(rsmi_func_id_iter_handle_t handle,
                                                  rsmi_func_id_value_t *value);
 
 /** @} */  // end of APISupport
+
+/**
+ * @brief Prepare to collect event notifications for a GPU
+ *
+ * @details This function prepares to collect events for the GPU with device
+ * ID @p dv_ind, by initializing any required system parameters. This call
+ * may open files which will remain open until ::rsmi_event_notification_stop()
+ * is called.
+ *
+ * @param dv_ind a device index corresponding to the device on which to
+ * listen for events
+ *
+ * @retval ::RSMI_STATUS_SUCCESS is returned upon successful call.
+ */
+rsmi_status_t
+rsmi_event_notification_init(uint32_t dv_ind);
+
+/**
+ * @brief Specify which events to collect for a device
+ *
+ * @details Given a device index @p dv_ind and a @p mask consisting of
+ * elements of ::rsmi_evt_notification_type_t OR'd together, this function
+ * will listen for the events specified in @p mask on the device
+ * corresponding to @p dv_ind.
+ *
+ * @param dv_ind a device index corresponding to the device on which to
+ * listen for events
+ *
+ * @param mask 0 or more elements of ::rsmi_evt_notification_type_t OR'd
+ * together that indicate which event types to listen for.
+ *
+ * @retval ::RSMI_STATUS_INIT_ERROR is returned if
+ * ::rsmi_event_notification_init() has not been called before a call to this
+ * function
+ *
+ * @retval ::RSMI_STATUS_SUCCESS is returned upon successful call
+ */
+rsmi_status_t
+rsmi_event_notification_mask_set(uint32_t dv_ind, uint64_t mask);
+
+/**
+ * @brief Collect event notifications, waiting a specified amount of time
+ *
+ * @details Given a time period @p timeout_ms in milliseconds and a caller-
+ * provided buffer of ::rsmi_evt_notification_data_t's @p data with a length
+ * (in ::rsmi_evt_notification_data_t's, also specified by the caller) in the
+ * memory location pointed to by @p num_elem, this function will collect
+ * ::rsmi_evt_notification_type_t events for up to @p timeout_ms milliseconds,
+ * and write up to *@p num_elem event items to @p data. Upon return @p num_elem
+ * is updated with the number of events that were actually written. If events
+ * are already present when this function is called, it will write the events
+ * to the buffer then poll for new events if there is still caller-provided
+ * buffer available to write any new events that would be found.
+ *
+ * This function requires prior calls to ::rsmi_event_notification_init() and
+ * ::rsmi_event_notification_mask_set(). This function polls for the
+ * occurrance of the events on the respective devices that were previously
+ * specified by ::rsmi_event_notification_mask_set().
+ *
+ * @param[in] timeout_ms number of milliseconds to wait for an event
+ * to occur
+ *
+ * @param[inout] num_elem pointer to uint32_t, provided by the caller. On
+ * input, this value tells how many ::rsmi_evt_notification_data_t elements
+ * are being provided by the caller with @p data. On output, the location
+ * pointed to by @p num_elem will contain the number of items written to
+ * the provided buffer.
+ *
+ * @param[out] data pointer to a caller-provided memory buffer of size
+ * @p num_elem ::rsmi_evt_notification_data_t to which this function may safely
+ * write. If there are events found, up to @p num_elem event items will be
+ * written to @p data.
+ *
+ * @retval ::RSMI_STATUS_SUCCESS The function ran successfully. The events
+ * that were found are written to @p data and @p num_elems is updated
+ * with the number of elements that were written.
+ *
+ * @retval ::RSMI_STATUS_NO_DATA No events were found to collect.
+ *
+ */
+rsmi_status_t
+rsmi_event_notification_get(int timeout_ms,
+                     uint32_t *num_elem, rsmi_evt_notification_data_t *data);
+
+/**
+ * @brief Close any file handles and free any resources used by event
+ * notification for a GPU
+ *
+ * @details Any resources used by event notification for the GPU with
+ * device index @p dv_ind will be free with this
+ * function. This includes freeing any memory and closing file handles. This
+ * should be called for every call to ::rsmi_event_notification_init()
+ *
+ * @param[in] dv_ind The device index of the GPU for which event
+ * notification resources will be free
+ *
+ * @retval ::RSMI_STATUS_INVALID_ARGS resources for the given device have
+ * either already been freed, or were never allocated by
+ * ::rsmi_event_notification_init()
+ *
+ * @retval ::RSMI_STATUS_SUCCESS is returned upon successful call
+ */
+rsmi_status_t rsmi_event_notification_stop(uint32_t dv_ind);
 
 #ifdef __cplusplus
 }

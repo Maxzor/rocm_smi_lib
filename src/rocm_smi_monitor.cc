@@ -56,6 +56,7 @@
 #include "rocm_smi/rocm_smi_main.h"
 #include "rocm_smi/rocm_smi_monitor.h"
 #include "rocm_smi/rocm_smi_utils.h"
+#include "rocm_smi/rocm_smi_exception.h"
 
 namespace amd {
 namespace smi {
@@ -274,12 +275,19 @@ Monitor::setSensorLabelMap(void) {
   }
   auto add_temp_sensor_entry = [&](uint32_t file_index) {
     ret = readMonitor(kMonTempLabel, file_index, &type_str);
-    if (ret) {
-      return ret;
-    }
-
     rsmi_temperature_type_t t_type = kTempSensorNameMap.at(type_str);
-    temp_type_index_map_.insert({t_type, file_index});
+
+    // If readMonitor fails, there is no label file for the file_index.
+    // In that case, map the type to file index 0, which is not supported
+    // and will fail appropriately later when we check for support.
+    if (ret) {
+      temp_type_index_map_.insert({t_type, 0});
+      index_temp_type_map_.insert({file_index, RSMI_TEMP_TYPE_INVALID});
+    } else {
+      temp_type_index_map_.insert({t_type, file_index});
+      index_temp_type_map_.insert({file_index, t_type});
+    }
+    index_temp_type_map_.insert({file_index, t_type});
     return 0;
   };
 
@@ -315,34 +323,46 @@ static int get_supported_sensors(std::string dir_path, std::string fn_reg_ex,
   int64_t mon_val;
 
   char *endptr;
-  std::regex re(fn_reg_ex);
-  std::string fn;
+  try {
+    std::regex re(fn_reg_ex);
+    std::string fn;
 
-  while (dentry != nullptr) {
-    fn = dentry->d_name;
-    if (std::regex_search(fn, match, re)) {
-      assert(match.size() == 2);  // 1 for whole match + 1 for sub-match
-      errno = 0;
-      mon_val = strtol(match.str(1).c_str(), &endptr, 10);
-      assert(errno == 0);
-      assert(*endptr == '\0');
-      if (errno) {
-        closedir(hwmon_dir);
-        return -2;
+    while (dentry != nullptr) {
+      fn = dentry->d_name;
+      if (std::regex_search(fn, match, re)) {
+        assert(match.size() == 2);  // 1 for whole match + 1 for sub-match
+        errno = 0;
+        mon_val = strtol(match.str(1).c_str(), &endptr, 10);
+        assert(errno == 0);
+        assert(*endptr == '\0');
+        if (errno) {
+          closedir(hwmon_dir);
+          return -2;
+        }
+        sensors->push_back(mon_val);
       }
-      sensors->push_back(mon_val);
+      dentry = readdir(hwmon_dir);
     }
-    dentry = readdir(hwmon_dir);
-  }
-  if (closedir(hwmon_dir)) {
-    return errno;
+    if (closedir(hwmon_dir)) {
+      return errno;
+    }
+  } catch (std::regex_error e) {
+    std::cout << "Regular expression error:" << std::endl;
+    std::cout << e.what() << std::endl;
+    std::cout << "Regex error code: " << e.code() << std::endl;
+    return -3;
   }
   return 0;
 }
 
 uint32_t
-Monitor::getSensorIndex(rsmi_temperature_type_t type) {
+Monitor::getTempSensorIndex(rsmi_temperature_type_t type) {
   return temp_type_index_map_.at(type);
+}
+
+rsmi_temperature_type_t
+Monitor::getTempSensorEnum(uint64_t ind) {
+  return index_temp_type_map_.at(ind);
 }
 
 static std::vector<uint64_t> get_intersection(std::vector<uint64_t> *v1,
@@ -359,6 +379,25 @@ static std::vector<uint64_t> get_intersection(std::vector<uint64_t> *v1,
   return intersect;
 }
 
+// Use this enum to encode the monitor type into the monitor ID.
+// We can later use this to convert to rsmi-api sensor types; for exampple,
+// rsmi_temperature_type_t, which is what the caller will expect. Add
+// new types as needed.
+
+typedef enum {
+  eDefaultMonitor = 0,
+  eTempMonitor,
+} monitor_types;
+
+static monitor_types getFuncType(std::string f_name) {
+  monitor_types ret = eDefaultMonitor;
+
+  if (f_name.compare("rsmi_dev_temp_metric_get") == 0) {
+    ret = eTempMonitor;
+  }
+  return ret;
+}
+
 void Monitor::fillSupportedFuncs(SupportedFuncMap *supported_funcs) {
   std::map<const char *, monitor_depends_t>::const_iterator it =
                                                    kMonFuncDependsMap.begin();
@@ -368,6 +407,7 @@ void Monitor::fillSupportedFuncs(SupportedFuncMap *supported_funcs) {
   std::vector<uint64_t> sensors_i;
   std::vector<uint64_t> intersect;
   int ret;
+  monitor_types m_type;
 
   assert(supported_funcs != nullptr);
 
@@ -376,6 +416,7 @@ void Monitor::fillSupportedFuncs(SupportedFuncMap *supported_funcs) {
     std::vector<const char *>::const_iterator dep =
                                          it->second.mandatory_depends.begin();
 
+    m_type = getFuncType(it->first);
     mand_depends_met = true;
 
     // Initialize "intersect". A monitor is considered supported if all of its
@@ -385,9 +426,30 @@ void Monitor::fillSupportedFuncs(SupportedFuncMap *supported_funcs) {
     // dependency monitors. The main assumption here is that
     // variant_<sensor_i>'s sensor-based dependencies have the same index i;
     // in other words, variant_i is not dependent on a sensor j, j != i
-    do {
-      ret = get_supported_sensors(mon_root + "/", *dep, &intersect);
-      if (ret == -1) {
+
+    // Initialize intersect with the available monitors for the first
+    // mandatory dependency.
+    ret = get_supported_sensors(mon_root + "/", *dep, &intersect);
+    std::string dep_path;
+    if (ret == -1) {
+      // In this case, the dependency is not sensor-specific, so just
+      // see if the file exists.
+      dep_path = mon_root + "/" + *dep;
+      if (!FileExists(dep_path.c_str())) {
+        mand_depends_met = false;
+      }
+    } else if (ret <= -2) {
+      throw amd::smi::rsmi_exception(RSMI_STATUS_INTERNAL_EXCEPTION,
+                        "Failed to parse monitor file name: " + dep_path);
+    }
+    dep++;
+
+    while (mand_depends_met && dep != it->second.mandatory_depends.end()) {
+      ret = get_supported_sensors(mon_root + "/", *dep, &sensors_i);
+
+      if (ret == 0) {
+        intersect = get_intersection(&sensors_i, &intersect);
+      } else if (ret == -1) {
         // In this case, the dependency is not sensor-specific, so just
         // see if the file exists.
         std::string dep_path = mon_root + "/" + *dep;
@@ -395,9 +457,13 @@ void Monitor::fillSupportedFuncs(SupportedFuncMap *supported_funcs) {
           mand_depends_met = false;
           break;
         }
+      } else if (ret <= -2) {
+        throw amd::smi::rsmi_exception(RSMI_STATUS_INTERNAL_EXCEPTION,
+                          "Failed to parse monitor file name: " + dep_path);
       }
+
       dep++;
-    } while (dep != it->second.mandatory_depends.end());
+    }
 
     if (!mand_depends_met) {
       it++;
@@ -420,12 +486,29 @@ void Monitor::fillSupportedFuncs(SupportedFuncMap *supported_funcs) {
 
         if (ret == 0) {
           supported_monitors = get_intersection(&sensors_i, &intersect);
+        } else if (ret <= -2) {
+          throw amd::smi::rsmi_exception(RSMI_STATUS_INTERNAL_EXCEPTION,
+                            "Failed to parse monitor file name: " + dep_path);
         }
       } else {
         supported_monitors = intersect;
       }
       if (supported_monitors.size() > 0) {
-        (*supported_variants)[kMonInfoVarTypeToRSMIVariant.at(*var)] =
+        for (uint32_t i = 0; i < supported_monitors.size(); ++i) {
+          assert(supported_monitors[i] > 0);
+
+          if (m_type == eDefaultMonitor) {
+            supported_monitors[i] |=
+                    (supported_monitors[i] - 1) << MONITOR_TYPE_BIT_POSITION;
+          } else if (m_type == eTempMonitor) {
+            supported_monitors[i] |=
+                 static_cast<uint64_t>(getTempSensorEnum(supported_monitors[i]))
+                                                << MONITOR_TYPE_BIT_POSITION;
+          } else {
+            assert(!"Unexpected monitor type");
+          }
+        }
+      (*supported_variants)[kMonInfoVarTypeToRSMIVariant.at(*var)] =
                              std::make_shared<SubVariant>(supported_monitors);
       }
     }
