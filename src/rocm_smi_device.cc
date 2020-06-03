@@ -64,10 +64,7 @@
 #include "rocm_smi/rocm_smi_exception.h"
 #include "rocm_smi/rocm_smi_utils.h"
 #include "rocm_smi/rocm_smi_kfd.h"
-
-extern "C" {
 #include "shared_mutex.h"  // NOLINT
-};
 
 namespace amd {
 namespace smi {
@@ -108,6 +105,7 @@ static const char *kDevDFCountersAvailableFName = "df_cntr_avail";
 static const char *kDevMemBusyPercentFName = "mem_busy_percent";
 static const char *kDevXGMIErrorFName = "xgmi_error";
 static const char *kDevSerialNumberFName = "serial_number";
+static const char *kDevNumaNodeFName = "numa_node";
 
 // Firmware version files
 static const char *kDevFwVersionAsdFName = "fw_version/asd_fw_version";
@@ -266,6 +264,7 @@ static const std::map<DevInfoTypes, const char *> kDevAttribNameMap = {
     {kDevFwVersionVcn, kDevFwVersionVcnFName},
     {kDevSerialNumber, kDevSerialNumberFName},
     {kDevMemPageBad, kDevMemPageBadFName},
+    {kDevNumaNode, kDevNumaNodeFName},
 };
 
 static const std::map<rsmi_dev_perf_level, const char *> kDevPerfLvlMap = {
@@ -373,6 +372,7 @@ static const std::map<const char *, dev_depends_t> kDevFuncDependsMap = {
   {"rsmi_dev_xgmi_error_status",         {{kDevXGMIErrorFName}, {}}},
   {"rsmi_dev_xgmi_error_reset",          {{kDevXGMIErrorFName}, {}}},
   {"rsmi_dev_memory_reserved_pages_get", {{kDevMemPageBadFName}, {}}},
+  {"rsmi_topo_numa_affinity_get",        {{kDevNumaNodeFName}, {}}},
 
   // These functions with variants, but no sensors/units. (May or may not
   // have mandatory dependencies.)
@@ -458,9 +458,8 @@ static const std::map<const char *, dev_depends_t> kDevFuncDependsMap = {
   if (X) return X; \
 }
 
-Device::Device(std::string p, RocmSMI_env_vars const *e) : path_(p), env_(e) {
-  monitor_ = nullptr;
-
+Device::Device(std::string p, RocmSMI_env_vars const *e) : monitor_(nullptr),
+                                   path_(p), env_(e), evt_notif_anon_fd_(-1) {
 #ifdef NDEBUG
     env_ = nullptr;
 #endif
@@ -471,8 +470,6 @@ Device::Device(std::string p, RocmSMI_env_vars const *e) : path_(p), env_(e) {
 
   std::string m_name("/rocm_smi_");
   m_name += dev;
-  m_name += '_';
-  m_name += std::to_string(geteuid());
 
   mutex_ = shared_mutex_init(m_name.c_str(), 0777);
 
@@ -683,6 +680,7 @@ int Device::readDevInfo(DevInfoTypes type, uint64_t *val) {
     case kDevDFCountersAvailable:
     case kDevMemBusyPercent:
     case kDevXGMIError:
+    case kDevNumaNode:
       ret = readDevInfoStr(type, &tempStr);
       RET_IF_NONZERO(ret);
       if (tempStr == "") {
@@ -880,6 +878,19 @@ void Device::fillSupportedFuncs(void) {
   // DumpSupportedFunctions();
 }
 
+static bool subvariant_match(const std::shared_ptr<SubVariant> *sv,
+                                                             uint64_t sub_v) {
+  assert(sv != nullptr);
+
+  SubVariantIt it = (*sv)->begin();
+  for (; it != (*sv)->end(); it++) {
+    if ((*it & MONITOR_IND_BIT_MASK) == sub_v) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool Device::DeviceAPISupported(std::string name, uint64_t variant,
                                                        uint64_t sub_variant) {
   SupportedFuncMapIt func_it;
@@ -908,13 +919,7 @@ bool Device::DeviceAPISupported(std::string name, uint64_t variant,
       // if variant is != RSMI_DEFAULT_VARIANT, we should not have a nullptr
       assert(var_it->second != nullptr);
 
-      sub_var_it = std::find(var_it->second->begin(),
-                                          var_it->second->end(), sub_variant);
-      if (sub_var_it == var_it->second->end()) {
-        return false;
-      } else {
-        return true;
-      }
+      return subvariant_match(&(var_it->second), sub_variant);
     }
   } else {  // variant == RSMI_DEFAULT_VARIANT
     if (func_it->second != nullptr) {
@@ -926,13 +931,7 @@ bool Device::DeviceAPISupported(std::string name, uint64_t variant,
       if (func_it->second == nullptr) {
         return false;
       }
-      sub_var_it = std::find(var_it->second->begin(),
-                                          var_it->second->end(), sub_variant);
-      if (sub_var_it == var_it->second->end()) {
-        return false;
-      } else {
-        return true;
-      }
+      return subvariant_match(&(var_it->second), sub_variant);
     }
   }
   assert(!"We should not reach here");

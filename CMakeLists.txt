@@ -13,6 +13,7 @@ include(utils)
 set(ROCM_SMI "rocm_smi")
 set(ROCM_SMI_COMPONENT "lib${ROCM_SMI}")
 set(ROCM_SMI_TARGET "${ROCM_SMI}64")
+set(ROCM_SMI_LIB_NAME "lib${ROCM_SMI_TARGET}")
 
 # The following default version values should be updated as appropriate for
 # ABI breaks (update MAJOR and MINOR), and ABI/API additions (update MINOR).
@@ -56,8 +57,10 @@ message("SOVERSION: ${SO_VERSION_STRING}")
 ##  rocm_smi_lib-dev
 set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
                               CACHE STRING "Location of rocm_smi source code.")
-set(CMAKE_INSTALL_PREFIX "/opt/rocm"
-                                CACHE STRING "Default installation directory.")
+if(NOT DEFINED CMAKE_INSTALL_PREFIX)
+    set(CMAKE_INSTALL_PREFIX "/opt/rocm"
+                              CACHE STRING "Default installation directory.")
+endif ()
 set(CPACK_PACKAGING_INSTALL_PREFIX "/opt/rocm"
                                       CACHE STRING "Default packaging prefix.")
 set(CPACK_GENERATOR "DEB;RPM"  CACHE STRING "Default packaging generators.")
@@ -89,6 +92,12 @@ endif()
 set(CPACK_PACKAGE_FILE_NAME "${ROCM_SMI_PACKAGE}-${PKG_VERSION_STR}")
 ## Verbose output.
 set(CMAKE_VERBOSE_MAKEFILE on)
+
+if (CMAKE_COMPILER_IS_GNUCC AND
+                         CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.4.0)
+    message("Compiler version is " ${CMAKE_CXX_COMPILER_VERSION})
+    message(FATAL_ERROR "Require at least gcc-5.4.0")
+endif()
 
 ## Compiler flags
 set(CMAKE_CXX_FLAGS
@@ -132,7 +141,8 @@ set(SMI_SRC_LIST ${SMI_SRC_LIST} "${SRC_DIR}/rocm_smi_power_mon.cc")
 set(SMI_SRC_LIST ${SMI_SRC_LIST} "${SRC_DIR}/rocm_smi_utils.cc")
 set(SMI_SRC_LIST ${SMI_SRC_LIST} "${SRC_DIR}/rocm_smi_counters.cc")
 set(SMI_SRC_LIST ${SMI_SRC_LIST} "${SRC_DIR}/rocm_smi_kfd.cc")
-set(SMI_SRC_LIST ${SMI_SRC_LIST} "${SRC_DIR}/shared_mutex/shared_mutex.c")
+set(SMI_SRC_LIST ${SMI_SRC_LIST} "${SRC_DIR}/rocm_smi_io_link.cc")
+set(SMI_SRC_LIST ${SMI_SRC_LIST} "${SRC_DIR}/shared_mutex/shared_mutex.cc")
 
 set(SMI_INC_LIST "${INC_DIR}/rocm_smi_device.h")
 set(SMI_INC_LIST ${SMI_INC_LIST} "${INC_DIR}/rocm_smi_main.h")
@@ -143,6 +153,7 @@ set(SMI_INC_LIST ${SMI_INC_LIST} "${INC_DIR}/rocm_smi_common.h")
 set(SMI_INC_LIST ${SMI_INC_LIST} "${INC_DIR}/rocm_smi_exception.h")
 set(SMI_INC_LIST ${SMI_INC_LIST} "${INC_DIR}/rocm_smi_counters.h")
 set(SMI_INC_LIST ${SMI_INC_LIST} "${INC_DIR}/rocm_smi_kfd.h")
+set(SMI_INC_LIST ${SMI_INC_LIST} "${INC_DIR}/rocm_smi_io_link.h")
 set(SMI_INC_LIST ${SMI_INC_LIST} "${SRC_DIR}/shared_mutex/shared_mutex.h")
 
 set(SMI_EXAMPLE_EXE "rocm_smi_ex")
@@ -166,11 +177,59 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL Release)
           POST_BUILD COMMAND ${CMAKE_STRIP} lib${ROCM_SMI_TARGET}.so)
 endif ()
 
+## Add symlinks from top level ROCm lib dir to rocm-smi lib so files
+add_custom_target ( so-link ALL WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+                    COMMAND ${CMAKE_COMMAND} -E create_symlink
+                          ../${ROCM_SMI}/lib/${ROCM_SMI_LIB_NAME}.so so-link )
+add_custom_target ( so-major-link ALL WORKING_DIRECTORY
+                  ${CMAKE_CURRENT_BINARY_DIR} COMMAND ${CMAKE_COMMAND}
+                  -E create_symlink
+                  ../${ROCM_SMI}/lib/${ROCM_SMI_LIB_NAME}.so.${VERSION_MAJOR}
+                                                               so-major-link )
+
+install ( FILES ${CMAKE_CURRENT_BINARY_DIR}/so-link DESTINATION lib RENAME
+                                                     ${ROCM_SMI_LIB_NAME}.so )
+install ( FILES ${CMAKE_CURRENT_BINARY_DIR}/so-major-link DESTINATION lib
+                             RENAME ${ROCM_SMI_LIB_NAME}.so.${VERSION_MAJOR} )
+
 ## Add the install directives for the runtime library.
 install(TARGETS ${ROCM_SMI_TARGET}
           LIBRARY DESTINATION ${ROCM_SMI}/lib COMPONENT ${ROCM_SMI_COMPONENT})
 install(FILES ${SOURCE_DIR}/include/rocm_smi/rocm_smi.h
                                         DESTINATION rocm_smi/include/rocm_smi)
+install(FILES ${SOURCE_DIR}/include/rocm_smi/kfd_ioctl.h
+                                        DESTINATION rocm_smi/include/rocm_smi)
+
+# Generate Doxygen documentation
+find_package(Doxygen)
+find_package(LATEX COMPONENTS PDFLATEX)
+if (DOXYGEN_FOUND AND LATEX_FOUND)
+  set (RSMI_MANUAL_NAME "ROCm_SMI_Manual")
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/docs/rsmi_doxygen.cfg
+                                   ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)
+
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/latex/refman.tex
+        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/docs/rsmi_doxygen.cfg
+                "${INC_DIR}/rocm_smi.h"
+         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/latex/refman.pdf
+         COMMAND make  > /dev/null
+         COMMAND cp  ${CMAKE_CURRENT_BINARY_DIR}/latex/refman.pdf
+                      ${CMAKE_CURRENT_SOURCE_DIR}/docs/${RSMI_MANUAL_NAME}.pdf
+         DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/latex/refman.tex
+         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/latex)
+
+  add_custom_target(docs DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/latex/refman.pdf)
+
+  add_dependencies(${ROCM_SMI_TARGET} docs)
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/latex/refman.pdf
+                         DESTINATION ${ROCM_SMI}/docs/${RSMI_MANUAL_NAME}.pdf)
+  install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/docs/README.md
+                          DESTINATION ${ROCM_SMI}/docs/)
+else()
+  message("Doxygen or Latex is not found. Will not generate documents.")
+endif(DOXYGEN_FOUND AND LATEX_FOUND)
 
 ## Add the packaging directives for the runtime library.
 
@@ -191,16 +250,4 @@ set (CPACK_RPM_PACKAGE_VERSION ${PKG_VERSION_STR})
 
 include (CPack)
 
-# Generate Doxygen documentation
-find_package(Doxygen)
-if (DOXYGEN_FOUND)
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/docs/rsmi_doxygen.cfg
-                                   ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)
-  add_custom_target(doc
-         ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
-         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-                  COMMENT "Generating API documentation with Doxygen" VERBATIM)
-else()
-  message("Doxygen is not found. Will not generate documents.")
-endif(DOXYGEN_FOUND)
 

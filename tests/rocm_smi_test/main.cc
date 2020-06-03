@@ -77,6 +77,10 @@
 #include "functional/xgmi_read_write.h"
 #include "functional/mem_page_info_read.h"
 #include "functional/api_support_read.h"
+#include "functional/mutual_exclusion.h"
+#include "functional/evt_notif_read_write.h"
+#include "functional/init_shutdown_refcount.h"
+#include "rocm_smi_test/functional/hw_topology_read.h"
 
 static RSMITstGlobals *sRSMIGlvalues = nullptr;
 
@@ -211,6 +215,10 @@ TEST(rsmitstReadOnly, TestProcInfoRead) {
   TestProcInfoRead tst;
   RunGenericTest(&tst);
 }
+TEST(rsmitstReadOnly, TestHWTopologyRead) {
+  TestHWTopologyRead tst;
+  RunGenericTest(&tst);
+}
 TEST(rsmitstReadWrite, TestXGMIReadWrite) {
   TestXGMIReadWrite tst;
   RunGenericTest(&tst);
@@ -222,6 +230,26 @@ TEST(rsmitstReadOnly, TestMemPageInfoRead) {
 TEST(rsmitstReadOnly, TestAPISupportRead) {
   TestAPISupportRead tst;
   RunGenericTest(&tst);
+}
+TEST(rsmitstReadOnly, TestMutualExclusion) {
+  TestMutualExclusion tst;
+
+  tst.DisplayTestInfo();
+  tst.SetUp();
+  tst.Run();
+  RunCustomTestEpilog(&tst);
+}
+TEST(rsmitstReadWrite, TestEvtNotifReadWrite) {
+  TestEvtNotifReadWrite tst;
+  RunGenericTest(&tst);
+}
+TEST(rsmitstReadOnly, TestConcurrentInit) {
+  TestConcurrentInit tst;
+  tst.DisplayTestInfo();
+  //  tst.SetUp();   // Avoid extra rsmi_init
+  tst.Run();
+  // RunCustomTestEpilog(&tst);  // Avoid extra rsmi_shut_down
+  tst.DisplayResults();
 }
 
 int main(int argc, char** argv) {
@@ -240,24 +268,6 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  int ret = 0;
   sRSMIGlvalues = &settings;
-  ret = RUN_ALL_TESTS();
-
-  if (ret) {
-    return ret;
-  }
-
-  settings.init_options = RSMI_INIT_FLAG_ALL_GPUS;
-
-  std::cout << "****************************************" << std::endl;
-  std::cout << "****************************************" << std::endl;
-  std::cout << "****************************************" << std::endl;
-  std::cout << "Re-running tests with init options: " << std::hex <<
-                                    settings.init_options << std::endl;
-  std::cout << "****************************************" << std::endl;
-  std::cout << "****************************************" << std::endl;
-  std::cout << "****************************************" << std::endl;
-  settings.init_options = RSMI_INIT_FLAG_ALL_GPUS;
   return RUN_ALL_TESTS();
 }

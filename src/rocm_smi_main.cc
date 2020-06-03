@@ -237,12 +237,16 @@ static uint32_t GetMonitorDevices(const std::shared_ptr<amd::smi::Device> &d,
   return 0;
 }
 
-std::vector<std::shared_ptr<amd::smi::Device>> RocmSMI::s_monitor_devices;
-
 void
 RocmSMI::Initialize(uint64_t flags) {
   auto i = 0;
   uint32_t ret;
+
+  assert(ref_count_ == 1);
+  if (ref_count_ != 1) {
+    throw amd::smi::rsmi_exception(RSMI_INITIALIZATION_ERROR,
+            "Unexpected: RocmSMI ref_count_ != 1");
+  }
 
   init_options_ = flags;
 
@@ -262,11 +266,11 @@ RocmSMI::Initialize(uint64_t flags) {
   // IterateSMIDevices will iterate through all the known devices and apply
   // the provided call-back to each device found.
   ret = IterateSMIDevices(GetMonitorDevices,
-                                  reinterpret_cast<void *>(&s_monitor_devices));
+                                  reinterpret_cast<void *>(&monitor_devices_));
 
   if (ret != 0) {
     throw amd::smi::rsmi_exception(RSMI_INITIALIZATION_ERROR,
-               "Failed to initialize rocm_smi library (amdgpu node discovery.");
+            "Failed to initialize rocm_smi library (amdgpu node discovery).");
   }
 
   std::map<uint64_t, std::shared_ptr<KFDNode>> tmp_map;
@@ -276,13 +280,24 @@ RocmSMI::Initialize(uint64_t flags) {
                  "Failed to initialize rocm_smi library (KFD node discovery).");
   }
 
+  std::map<std::pair<uint32_t, uint32_t>, std::shared_ptr<IOLink>>
+    io_link_map_tmp;
+  ret = DiscoverIOLinks(&io_link_map_tmp);
+  if (ret != 0) {
+    throw amd::smi::rsmi_exception(RSMI_INITIALIZATION_ERROR,
+                 "Failed to initialize rocm_smi library (IO Links discovery).");
+  }
+  std::map<std::pair<uint32_t, uint32_t>, std::shared_ptr<IOLink>>::iterator it;
+  for (it = io_link_map_tmp.begin(); it != io_link_map_tmp.end(); it++)
+    io_link_map_[it->first] = it->second;
+
   std::shared_ptr<amd::smi::Device> dev;
 
   // 1. construct kfd_node_map_ with gpu_id as key and *Device as value
   // 2. for each kfd node, write the corresponding dv_ind
   // 3. for each amdgpu device, write the corresponding gpu_id
-  for (uint32_t dv_ind = 0; dv_ind < s_monitor_devices.size(); ++dv_ind) {
-    dev = s_monitor_devices[dv_ind];
+  for (uint32_t dv_ind = 0; dv_ind < monitor_devices_.size(); ++dv_ind) {
+    dev = monitor_devices_[dv_ind];
     uint64_t bdfid = dev->bdfid();
     assert(tmp_map.find(bdfid) != tmp_map.end());
     if (tmp_map.find(bdfid) == tmp_map.end()) {
@@ -291,6 +306,7 @@ RocmSMI::Initialize(uint64_t flags) {
     }
 
     tmp_map[bdfid]->set_amdgpu_dev_index(dv_ind);
+    dev_ind_to_node_ind_map_[dv_ind] = tmp_map[bdfid]->node_index();
     uint64_t gpu_id = tmp_map[bdfid]->gpu_id();
     dev->set_kfd_gpu_id(gpu_id);
     kfd_node_map_[gpu_id] = tmp_map[bdfid];
@@ -299,12 +315,21 @@ RocmSMI::Initialize(uint64_t flags) {
 
 void
 RocmSMI::Cleanup() {
-  s_monitor_devices.clear();
+  monitor_devices_.clear();
   devices_.clear();
   monitors_.clear();
+
+  if (kfd_notif_evt_fh() >= 0) {
+    int ret = close(kfd_notif_evt_fh());
+    if (ret < 0) {
+      throw amd::smi::rsmi_exception(RSMI_STATUS_FILE_ERROR,
+                 "Failed to close kfd file handle on shutdown.");
+    }
+  }
 }
 
-RocmSMI::RocmSMI(uint64_t flags) : init_options_(flags) {
+RocmSMI::RocmSMI(uint64_t flags) : init_options_(flags),
+                          kfd_notif_evt_fh_(-1), kfd_notif_evt_fh_refcnt_(0) {
 }
 
 RocmSMI::~RocmSMI() {
@@ -481,8 +506,10 @@ uint32_t RocmSMI::DiscoverAMDMonitors(void) {
       fs.close();
 
       if (amd_monitor_types_.find(mon_type) != amd_monitor_types_.end()) {
-        monitors_.push_back(std::shared_ptr<Monitor>(
-                                          new Monitor(mon_name, &env_vars_)));
+        std::shared_ptr<Monitor> m =
+                  std::shared_ptr<Monitor>(new Monitor(mon_name, &env_vars_));
+        m->setSensorLabelMap();
+        monitors_.push_back(m);
       }
     }
     dentry = readdir(mon_dir);
@@ -573,6 +600,28 @@ uint32_t RocmSMI::IterateSMIDevices(
     }
     ++d;
   }
+  return 0;
+}
+
+int RocmSMI::get_node_index(uint32_t dv_ind, uint32_t *node_ind) {
+  if (dev_ind_to_node_ind_map_.find(dv_ind) == dev_ind_to_node_ind_map_.end()) {
+    return EINVAL;
+  }
+  *node_ind = dev_ind_to_node_ind_map_[dv_ind];
+  return 0;
+}
+
+int RocmSMI::get_io_link_weight(uint32_t node_from, uint32_t node_to,
+                                uint64_t *weight) {
+  assert(weight != nullptr);
+  if (weight == nullptr) {
+    return EINVAL;
+  }
+  if (io_link_map_.find(std::make_pair(node_from, node_to)) ==
+      io_link_map_.end()) {
+    return EINVAL;
+  }
+  *weight = io_link_map_[std::make_pair(node_from, node_to)]->weight();
   return 0;
 }
 
