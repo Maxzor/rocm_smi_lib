@@ -1,6 +1,10 @@
+---
+ CMakeLists.txt |    6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -168,9 +168,9 @@
+@@ -194,11 +194,11 @@ install ( FILES ${CMAKE_CURRENT_BINARY_D
  
  ## Add the install directives for the runtime library.
  install(TARGETS ${ROCM_SMI_TARGET}
@@ -9,6 +13,9 @@
  install(FILES ${SOURCE_DIR}/include/rocm_smi/rocm_smi.h
 -                                        DESTINATION rocm_smi/include/rocm_smi)
 +                                        DESTINATION include/rocm_smi)
+ install(FILES ${SOURCE_DIR}/include/rocm_smi/kfd_ioctl.h
+-                                        DESTINATION rocm_smi/include/rocm_smi)
++                                        DESTINATION include/rocm_smi)
  
- ## Add the packaging directives for the runtime library.
- 
+ # Generate Doxygen documentation
+ find_package(Doxygen)
