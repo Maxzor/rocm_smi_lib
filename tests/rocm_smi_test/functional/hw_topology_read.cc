@@ -48,6 +48,7 @@
 
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "rocm_smi/rocm_smi.h"
@@ -62,7 +63,8 @@ typedef struct {
 
 TestHWTopologyRead::TestHWTopologyRead() : TestBase() {
   set_title("RSMI Hardware Topology Read Test");
-  set_description("This test verifies that Hardware Topology can be read properly.");
+  set_description(
+      "This test verifies that Hardware Topology can be read properly.");
 }
 
 TestHWTopologyRead::~TestHWTopologyRead(void) {
@@ -95,7 +97,9 @@ void TestHWTopologyRead::Run(void) {
 
   TestBase::Run();
   if (setup_failed_) {
-    std::cout << "** SetUp Failed for this test. Skipping.**" << std::endl;
+    IF_VERB(STANDARD) {
+      std::cout << "** SetUp Failed for this test. Skipping.**" << std::endl;
+    }
     return;
   }
 
@@ -103,16 +107,20 @@ void TestHWTopologyRead::Run(void) {
   err = rsmi_num_monitor_devices(&num_devices);
   CHK_ERR_ASRT(err)
 
-  gpu_link_t gpu_links[num_devices][num_devices];
-  uint32_t numa_numbers[num_devices];
+  // gpu_link_t gpu_links[num_devices][num_devices];
+  std::vector<std::vector<gpu_link_t>> gpu_links(num_devices,
+                                        std::vector<gpu_link_t>(num_devices));
+  // uint32_t numa_numbers[num_devices];
+  std::vector<uint32_t> numa_numbers(num_devices);
 
-  for (uint32_t dv_ind=0; dv_ind<num_devices; dv_ind++) {
+  for (uint32_t dv_ind = 0; dv_ind < num_devices; ++dv_ind) {
     err = rsmi_topo_get_numa_node_number(dv_ind, &numa_numbers[dv_ind]);
     if (err != RSMI_STATUS_SUCCESS) {
       if (err == RSMI_STATUS_NOT_SUPPORTED) {
         IF_VERB(STANDARD) {
-          std::cout << "\t**Numa Node Number. read: Not supported on this machine"
-                                                                   << std::endl;
+          std::cout <<
+           "\t**Numa Node Number. read: Not supported on this machine" <<
+                                                                    std::endl;
           return;
         }
       } else {
@@ -121,9 +129,9 @@ void TestHWTopologyRead::Run(void) {
     }
   }
 
-  for (uint32_t dv_ind_src=0; dv_ind_src<num_devices; dv_ind_src++) {
-    for (uint32_t dv_ind_dst=0; dv_ind_dst<num_devices; dv_ind_dst++) {
-      if(dv_ind_src == dv_ind_dst) {
+  for (uint32_t dv_ind_src = 0; dv_ind_src < num_devices; dv_ind_src++) {
+    for (uint32_t dv_ind_dst = 0; dv_ind_dst < num_devices; dv_ind_dst++) {
+      if (dv_ind_src == dv_ind_dst) {
         gpu_links[dv_ind_src][dv_ind_dst].type = "X";
         gpu_links[dv_ind_src][dv_ind_dst].hops = 0;
         gpu_links[dv_ind_src][dv_ind_dst].weight = 0;
@@ -134,8 +142,9 @@ void TestHWTopologyRead::Run(void) {
         if (err != RSMI_STATUS_SUCCESS) {
           if (err == RSMI_STATUS_NOT_SUPPORTED) {
             IF_VERB(STANDARD) {
-              std::cout << "\t**Link Type. read: Not supported on this machine"
-                                                                       << std::endl;
+              std::cout <<
+                  "\t**Link Type. read: Not supported on this machine"
+                                                                 << std::endl;
               return;
             }
           } else {
@@ -153,15 +162,20 @@ void TestHWTopologyRead::Run(void) {
 
             default:
               gpu_links[dv_ind_src][dv_ind_dst].type = "XXXX";
-              std::cout << "\t**Invalid IO LINK type. type=" << type << std::endl;
+              IF_VERB(STANDARD) {
+                std::cout << "\t**Invalid IO LINK type. type=" << type <<
+                                                                    std::endl;
+              }
           }
         }
-        err = rsmi_topo_get_link_weight(dv_ind_src, dv_ind_dst, &gpu_links[dv_ind_src][dv_ind_dst].weight);
+        err = rsmi_topo_get_link_weight(dv_ind_src, dv_ind_dst,
+                                   &gpu_links[dv_ind_src][dv_ind_dst].weight);
         if (err != RSMI_STATUS_SUCCESS) {
           if (err == RSMI_STATUS_NOT_SUPPORTED) {
             IF_VERB(STANDARD) {
-              std::cout << "\t**Link Weight. read: Not supported on this machine"
-                                                                       << std::endl;
+              std::cout <<
+                      "\t**Link Weight. read: Not supported on this machine"
+                                                                 << std::endl;
               return;
             }
           } else {
@@ -170,6 +184,10 @@ void TestHWTopologyRead::Run(void) {
         }
       }
     }
+  }
+
+  IF_NVERB(STANDARD) {
+    return;
   }
 
   std::cout << "**NUMA node number of GPUs**" << std::endl;
@@ -197,10 +215,11 @@ void TestHWTopologyRead::Run(void) {
     tmp = "GPU" + std::to_string(i);
     std::cout << std::setw(6) << std::left << tmp;
     for (j = 0; j < num_devices; j++) {
-      if(i == j)
+      if (i == j) {
         std::cout << std::setw(12) << std::left << "X";
-      else
+      } else {
         std::cout << std::setw(12) << std::left << gpu_links[i][j].type;
+      }
     }
     std::cout << std::endl;
   }
@@ -218,9 +237,9 @@ void TestHWTopologyRead::Run(void) {
     tmp = "GPU" + std::to_string(i);
     std::cout << std::setw(6) << std::left << tmp;
     for (j = 0; j < num_devices; j++) {
-      if(i == j)
+      if (i == j) {
         std::cout << std::setw(12) << std::left << "X";
-      else {
+      } else {
         std::cout << std::setw(12) << std::left << gpu_links[i][j].hops;
       }
     }
@@ -240,9 +259,9 @@ void TestHWTopologyRead::Run(void) {
     tmp = "GPU" + std::to_string(i);
     std::cout << std::setw(6) << std::left << tmp;
     for (j = 0; j < num_devices; j++) {
-      if(i == j)
+      if (i == j) {
         std::cout << std::setw(12) << std::left << "X";
-      else {
+      } else {
         std::cout << std::setw(12) << std::left << gpu_links[i][j].weight;
       }
     }

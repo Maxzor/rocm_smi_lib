@@ -141,7 +141,7 @@ typedef enum {
                                          //!< of devices from which SMI
                                          //!< information can be retrieved. By
                                          //!< default, only AMD devices are
-                                         //!<  ennumerated by RSMI.
+                                         //!<  enumerated by RSMI.
   RSMI_INIT_FLAG_RESRV_TEST1 = 0x800000000000000,  //!< Reserved for test
 } rsmi_init_flags_t;
 
@@ -165,8 +165,9 @@ typedef enum {
                                         //!< memory clock
   RSMI_DEV_PERF_LEVEL_STABLE_MIN_SCLK,  //!< Stable power state with minimum
                                         //!< system clock
+  RSMI_DEV_PERF_LEVEL_DETERMINISM,      //!< Performance determinism state
 
-  RSMI_DEV_PERF_LEVEL_LAST = RSMI_DEV_PERF_LEVEL_STABLE_MIN_SCLK,
+  RSMI_DEV_PERF_LEVEL_LAST = RSMI_DEV_PERF_LEVEL_DETERMINISM,
 
   RSMI_DEV_PERF_LEVEL_UNKNOWN = 0x100   //!< Unknown performance level
 } rsmi_dev_perf_level_t;
@@ -205,14 +206,14 @@ typedef uintptr_t rsmi_event_handle_t;
  */
 typedef enum {
   RSMI_EVNT_GRP_XGMI = 0,         //!< Data Fabric (XGMI) related events
-
+  RSMI_EVNT_GRP_XGMI_DATA_OUT = 10,  //!< XGMI Outbound data
   RSMI_EVNT_GRP_INVALID = 0xFFFFFFFF
 } rsmi_event_group_t;
 
 /**
  * Event types
  * @brief Event type enum. Events belonging to a particular event group
- * ::rsmi_event_group_t should begin ennumerating at the ::rsmi_event_group_t
+ * ::rsmi_event_group_t should begin enumerating at the ::rsmi_event_group_t
  * value for that group.
  */
 typedef enum {
@@ -224,19 +225,58 @@ typedef enum {
                                                   //!< neighbor 0
   RSMI_EVNT_XGMI_0_RESPONSE_TX,                   //!< Outgoing responses to
                                                   //!< neighbor 0
-  RSMI_EVNT_XGMI_0_BEATS_TX,                      //!< Data beats sent to
-                                                  //!< neighbor 0
+  /**
+   * @brief
+   *
+   * Data beats sent to neighbor 0; Each beat represents 32 bytes.<br><br>
+   *
+   * XGMI throughput can be calculated by multiplying a BEATs event
+   * such as ::RSMI_EVNT_XGMI_0_BEATS_TX by 32 and dividing by
+   * the time for which event collection occurred,
+   * ::rsmi_counter_value_t.time_running (which is in nanoseconds). To get
+   * bytes per second, multiply this value by 10<sup>9</sup>.<br>
+   * <br>
+   * Throughput = BEATS/time_running * 10<sup>9</sup>  (bytes/second)<br>
+   */
+  // ie, Throughput = BEATS/time_running 10^9  bytes/sec
+  RSMI_EVNT_XGMI_0_BEATS_TX,
   RSMI_EVNT_XGMI_1_NOP_TX,                        //!< NOPs sent to neighbor 1
   RSMI_EVNT_XGMI_1_REQUEST_TX,                        //!< Outgoing requests to
                                                   //!< neighbor 1
   RSMI_EVNT_XGMI_1_RESPONSE_TX,                   //!< Outgoing responses to
                                                   //!< neighbor 1
   RSMI_EVNT_XGMI_1_BEATS_TX,                      //!< Data beats sent to
-                                                  //!< neighbor 1
+                                                  //!< neighbor 1; Each beat
+                                                  //!< represents 32 bytes
 
-  RSMI_EVNT_XGMI_LAST = RSMI_EVNT_XGMI_1_BEATS_TX,
+  RSMI_EVNT_XGMI_LAST = RSMI_EVNT_XGMI_1_BEATS_TX,   // 5
 
-  RSMI_EVNT_LAST = RSMI_EVNT_XGMI_LAST
+  RSMI_EVNT_XGMI_DATA_OUT_FIRST = RSMI_EVNT_GRP_XGMI_DATA_OUT,  // 10
+
+  /*
+   * @brief Events in the RSMI_EVNT_GRP_XGMI_DATA_OUT group measure
+   * the number of beats sent on an XGMI link. Each beat represents
+   * 32 bytes. RSMI_EVNT_XGMI_DATA_OUT_n represents the number of
+   * outbound beats (each representing 32 bytes) on link n.<br><br>
+   *
+   * XGMI throughput can be calculated by multiplying a event
+   * such as ::RSMI_EVNT_XGMI_DATA_OUT_n by 32 and dividing by
+   * the time for which event collection occurred,
+   * ::rsmi_counter_value_t.time_running (which is in nanoseconds). To get
+   * bytes per second, multiply this value by 10<sup>9</sup>.<br>
+   * <br>
+   * Throughput = BEATS/time_running * 10<sup>9</sup>  (bytes/second)<br>
+   */
+  // ie, Throughput = BEATS/time_running 10^9  bytes/sec
+  RSMI_EVNT_XGMI_DATA_OUT_0 = RSMI_EVNT_XGMI_DATA_OUT_FIRST,
+  RSMI_EVNT_XGMI_DATA_OUT_1,   //!< Outbound beats to neighbor 1
+  RSMI_EVNT_XGMI_DATA_OUT_2,   //!< Outbound beats to neighbor 2
+  RSMI_EVNT_XGMI_DATA_OUT_3,   //!< Outbound beats to neighbor 3
+  RSMI_EVNT_XGMI_DATA_OUT_4,   //!< Outbound beats to neighbor 4
+  RSMI_EVNT_XGMI_DATA_OUT_5,   //!< Outbound beats to neighbor 5
+  RSMI_EVNT_XGMI_DATA_OUT_LAST = RSMI_EVNT_XGMI_DATA_OUT_5,
+
+  RSMI_EVNT_LAST = RSMI_EVNT_XGMI_DATA_OUT_LAST,
 } rsmi_event_type_t;
 
 /**
@@ -244,7 +284,8 @@ typedef enum {
  */
 typedef enum {
   RSMI_CNTR_CMD_START = 0,  //!< Start the counter
-  RSMI_CNTR_CMD_STOP,       //!< Stop the counter
+  RSMI_CNTR_CMD_STOP,       //!< Stop the counter; note that this should not
+                            //!< be used before reading.
 } rsmi_counter_command_t;
 
 /**
@@ -253,7 +294,9 @@ typedef enum {
 typedef struct {
   uint64_t value;            //!< Counter value
   uint64_t time_enabled;     //!< Time that the counter was enabled
-  uint64_t time_running;     //!< Time that che counter was running
+                             //!< (in nanoseconds)
+  uint64_t time_running;     //!< Time that the counter was running
+                             //!< (in nanoseconds)
 } rsmi_counter_value_t;
 
 /**
@@ -262,9 +305,17 @@ typedef struct {
 typedef enum {
   RSMI_EVT_NOTIF_VMFAULT = KFD_SMI_EVENT_VMFAULT,  //!< VM page fault
   RSMI_EVT_NOTIF_FIRST = RSMI_EVT_NOTIF_VMFAULT,
+  RSMI_EVT_NOTIF_THERMAL_THROTTLE = KFD_SMI_EVENT_THERMAL_THROTTLE,
+  RSMI_EVT_NOTIF_GPU_PRE_RESET = KFD_SMI_EVENT_GPU_PRE_RESET,
+  RSMI_EVT_NOTIF_GPU_POST_RESET = KFD_SMI_EVENT_GPU_POST_RESET,
 
-  RSMI_EVT_NOTIF_LAST = RSMI_EVT_NOTIF_VMFAULT
+  RSMI_EVT_NOTIF_LAST = RSMI_EVT_NOTIF_GPU_POST_RESET
 } rsmi_evt_notification_type_t;
+
+/**
+ * Macro to generate event bitmask from event id
+ */
+#define RSMI_EVENT_MASK_FROM_INDEX(i) (1ULL << ((i) - 1))
 
 //! Maximum number of characters an event notification message will be
 #define MAX_EVENT_NOTIFICATION_MSG_SIZE 64
@@ -346,7 +397,7 @@ typedef rsmi_temperature_metric_t rsmi_temperature_metric;
 /// \endcond
 
 /**
- * @brief This ennumeration is used to indicate from which part of the device a
+ * @brief This enumeration is used to indicate from which part of the device a
  * temperature reading should be obtained.
  */
 typedef enum {
@@ -356,10 +407,46 @@ typedef enum {
   RSMI_TEMP_TYPE_JUNCTION,                     //!< Junction/hotspot
                                                //!< temperature
   RSMI_TEMP_TYPE_MEMORY,                       //!< VRAM temperature
-
-  RSMI_TEMP_TYPE_LAST = RSMI_TEMP_TYPE_MEMORY,
+  RSMI_TEMP_TYPE_HBM_0,                        //!< HBM temperature instance 0
+  RSMI_TEMP_TYPE_HBM_1,                        //!< HBM temperature instance 1
+  RSMI_TEMP_TYPE_HBM_2,                        //!< HBM temperature instance 2
+  RSMI_TEMP_TYPE_HBM_3,                        //!< HBM temperature instance 3
+  RSMI_TEMP_TYPE_LAST = RSMI_TEMP_TYPE_HBM_3,
   RSMI_TEMP_TYPE_INVALID = 0xFFFFFFFF          //!< Invalid type
 } rsmi_temperature_type_t;
+
+/**
+ * @brief Voltage Metrics.  This enum is used to identify various
+ * Volatge metrics. Corresponding values will be in millivolt.
+ *
+ */
+typedef enum {
+  RSMI_VOLT_CURRENT = 0x0,               //!< Voltage current value.
+
+  RSMI_VOLT_FIRST = RSMI_VOLT_CURRENT,
+  RSMI_VOLT_MAX,                         //!< Voltage max value.
+  RSMI_VOLT_MIN_CRIT,                    //!< Voltage critical min value.
+  RSMI_VOLT_MIN,                         //!< Voltage min value.
+  RSMI_VOLT_MAX_CRIT,                    //!< Voltage critical max value.
+  RSMI_VOLT_AVERAGE,                     //!< Average voltage.
+  RSMI_VOLT_LOWEST,                      //!< Historical minimum voltage.
+  RSMI_VOLT_HIGHEST,                     //!< Historical maximum voltage.
+
+  RSMI_VOLT_LAST = RSMI_VOLT_HIGHEST
+} rsmi_voltage_metric_t;
+
+/**
+ * @brief This ennumeration is used to indicate which type of
+ * voltage reading should be obtained.
+ */
+typedef enum {
+  RSMI_VOLT_TYPE_FIRST = 0,
+
+  RSMI_VOLT_TYPE_VDDGFX = RSMI_VOLT_TYPE_FIRST,  //!< Vddgfx GPU
+                                                 //!< voltage
+  RSMI_VOLT_TYPE_LAST = RSMI_VOLT_TYPE_VDDGFX,
+  RSMI_VOLT_TYPE_INVALID = 0xFFFFFFFF            //!< Invalid type
+} rsmi_voltage_type_t;
 
 /**
  * @brief Pre-set Profile Selections. These bitmasks can be AND'd with the
@@ -525,12 +612,31 @@ typedef enum {
  * @brief Types for IO Link
  */
 typedef enum _RSMI_IO_LINK_TYPE {
-  RSMI_IOLINK_TYPE_UNDEFINED      = 0,         //!< unknown type.
-  RSMI_IOLINK_TYPE_PCIEXPRESS     = 1,         //!< PCI Express
-  RSMI_IOLINK_TYPE_XGMI           = 2,         //!< XGMI
-  RSMI_IOLINK_TYPE_NUMIOLINKTYPES,             //!< Number of IO Link types
-  RSMI_IOLINK_TYPE_SIZE           = 0xFFFFFFFF //!< Max of IO Link types
+  RSMI_IOLINK_TYPE_UNDEFINED      = 0,          //!< unknown type.
+  RSMI_IOLINK_TYPE_PCIEXPRESS     = 1,          //!< PCI Express
+  RSMI_IOLINK_TYPE_XGMI           = 2,          //!< XGMI
+  RSMI_IOLINK_TYPE_NUMIOLINKTYPES,              //!< Number of IO Link types
+  RSMI_IOLINK_TYPE_SIZE           = 0xFFFFFFFF  //!< Max of IO Link types
 } RSMI_IO_LINK_TYPE;
+
+/**
+ * @brief The utilization counter type
+ */
+typedef enum {
+  RSMI_UTILIZATION_COUNTER_FIRST = 0,
+  //!< GFX Activity
+  RSMI_COARSE_GRAIN_GFX_ACTIVITY  = RSMI_UTILIZATION_COUNTER_FIRST,
+  RSMI_COARSE_GRAIN_MEM_ACTIVITY,    //!< Memory Activity
+  RSMI_UTILIZATION_COUNTER_LAST = RSMI_COARSE_GRAIN_MEM_ACTIVITY
+} RSMI_UTILIZATION_COUNTER_TYPE;
+
+/**
+ * @brief The utilization counter data
+ */
+typedef struct  {
+  RSMI_UTILIZATION_COUNTER_TYPE type;   //!< Utilization counter type
+  uint64_t value;                       //!< Utilization counter value
+} rsmi_utilization_counter_t;
 
 /**
  * @brief Reserved Memory Page Record
@@ -698,6 +804,106 @@ typedef struct {
 typedef rsmi_od_volt_freq_data_t rsmi_od_volt_freq_data;
 /// \endcond
 
+
+/**
+ * @brief The following structures hold the gpu metrics values for a device.
+ */
+
+/**
+ * @brief Size and version information of metrics data
+ */
+struct metrics_table_header_t {
+  // TODO(amd) Doxygen documents
+  /// \cond Ignore in docs.
+  uint16_t      structure_size;
+  uint8_t       format_revision;
+  uint8_t       content_revision;
+  /// \endcond
+};
+
+/**
+ * @brief The following structure holds the gpu metrics values for a device.
+ */
+// Below is the assumed version of gpu_metric data on the device. If the device
+// is using this version, we can read data directly into rsmi_gpu_metrics_t.
+// If the device is using an older format, a conversion of formats will be
+// required.
+// DGPU targets have a format version of 1. APU targets have a format version of
+// 2. Currently, only version 1 (DGPU) gpu_metrics is supported.
+#define RSMI_GPU_METRICS_API_FORMAT_VER 1
+// The content version increments when gpu_metrics is extended with new and/or
+// existing field sizes are changed.
+#define RSMI_GPU_METRICS_API_CONTENT_VER_1 1
+#define RSMI_GPU_METRICS_API_CONTENT_VER_2 2
+#define RSMI_GPU_METRICS_API_CONTENT_VER_3 3
+
+// This should match NUM_HBM_INSTANCES
+#define RSMI_NUM_HBM_INSTANCES 4
+
+// Unit conversion factor for HBM temperatures
+#define CENTRIGRADE_TO_MILLI_CENTIGRADE 1000
+
+typedef struct {
+  // TODO(amd) Doxygen documents
+  /// \cond Ignore in docs.
+  struct metrics_table_header_t common_header;
+
+/* Temperature */
+  uint16_t      temperature_edge;
+  uint16_t      temperature_hotspot;
+  uint16_t      temperature_mem;
+  uint16_t      temperature_vrgfx;
+  uint16_t      temperature_vrsoc;
+  uint16_t      temperature_vrmem;
+
+/* Utilization */
+  uint16_t      average_gfx_activity;
+  uint16_t      average_umc_activity;  // memory controller
+  uint16_t      average_mm_activity;   // UVD or VCN
+
+/* Power/Energy */
+  uint16_t      average_socket_power;
+  uint64_t      energy_accumulator;      // v1 mod. (32->64)
+
+/* Driver attached timestamp (in ns) */
+  uint64_t      system_clock_counter;   // v1 mod. (moved from top of struct)
+
+/* Average clocks */
+  uint16_t      average_gfxclk_frequency;
+  uint16_t      average_socclk_frequency;
+  uint16_t      average_uclk_frequency;
+  uint16_t      average_vclk0_frequency;
+  uint16_t      average_dclk0_frequency;
+  uint16_t      average_vclk1_frequency;
+  uint16_t      average_dclk1_frequency;
+
+/* Current clocks */
+  uint16_t      current_gfxclk;
+  uint16_t      current_socclk;
+  uint16_t      current_uclk;
+  uint16_t      current_vclk0;
+  uint16_t      current_dclk0;
+  uint16_t      current_vclk1;
+  uint16_t      current_dclk1;
+
+/* Throttle status */
+  uint32_t      throttle_status;
+
+/* Fans */
+  uint16_t      current_fan_speed;
+
+/* Link width/speed */
+  uint16_t       pcie_link_width;  // v1 mod.(8->16)
+  uint16_t       pcie_link_speed;  // in 0.1 GT/s; v1 mod. (8->16)
+
+  uint16_t       padding;          // new in v1
+
+  uint32_t       gfx_activity_acc;   // new in v1
+  uint32_t       mem_actvity_acc;     // new in v1
+  uint16_t       temperature_hbm[RSMI_NUM_HBM_INSTANCES];  // new in v1
+  /// \endcond
+} rsmi_gpu_metrics_t;
+
 /**
  * @brief This structure holds error counts.
  */
@@ -710,9 +916,11 @@ typedef struct {
  * @brief This structure contains information specific to a process.
  */
 typedef struct {
-    uint32_t process_id;  //!< Process ID
-    uint32_t pasid;    //!< PASID
-    uint64_t vram_usage;  //!< VRAM usage
+    uint32_t process_id;      //!< Process ID
+    uint32_t pasid;           //!< PASID
+    uint64_t vram_usage;      //!< VRAM usage
+    uint64_t sdma_usage;      //!< SDMA usage in microseconds
+    uint32_t cu_occupancy;    //!< Compute Unit usage in percent
 } rsmi_process_info_t;
 
 
@@ -828,6 +1036,33 @@ rsmi_status_t rsmi_num_monitor_devices(uint32_t *num_devices);
  *
  */
 rsmi_status_t rsmi_dev_id_get(uint32_t dv_ind, uint16_t *id);
+
+
+/**
+ *  @brief Get the SKU for a desired device associated with the device with
+ *  provided device index.
+ *
+ *  @details Given a device index @p dv_ind and a pointer to a char @p sku,
+ *  this function will attempt to obtain the SKU from the Product Information
+ *  FRU chip, present on server ASICs. It will write the sku value to the
+ *  char array pointed to by @p sku.
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[inout] sku a pointer to char to which the sku will be written
+ *
+ *  If this parameter is nullptr, this function will return
+ *  ::RSMI_STATUS_INVALID_ARGS if the function is supported with the provided,
+ *  arguments and ::RSMI_STATUS_NOT_SUPPORTED if it is not supported with the
+ *  provided arguments.
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ *
+ */
+rsmi_status_t rsmi_dev_sku_get(uint32_t dv_ind, char *sku);
 
 /**
  *  @brief Get the device vendor id associated with the device with provided
@@ -1089,8 +1324,8 @@ rsmi_dev_subsystem_name_get(uint32_t dv_ind, char *name, size_t len);
  *  @param[inout] minor a pointer to a uint32_t into which minor number will
  *  be copied
  *
- *  @retval :: RSMI_STATUS_SUCCESS is returned upon successful call.
- *  @retval :: RSMI_STATUS_INIT_ERROR if failed to get minor number during
+ *  @retval ::RSMI_STATUS_SUCCESS is returned upon successful call.
+ *  @retval ::RSMI_STATUS_INIT_ERROR if failed to get minor number during
  *  initialization.
  *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
  *
@@ -1359,6 +1594,40 @@ rsmi_status_t
 rsmi_dev_power_ave_get(uint32_t dv_ind, uint32_t sensor_ind, uint64_t *power);
 
 /**
+ *  @brief Get the energy accumulator counter of the device with provided
+ *  device index.
+ *
+ *  @details Given a device index @p dv_ind, a pointer to a uint64_t
+ *  @p power, and a pointer to a uint64_t @p timestamp, this function will write
+ *  amount of energy consumed to the uint64_t pointed to by @p power,
+ *  and the timestamp to the uint64_t pointed to by @p timestamp.
+ *  The rsmi_dev_power_ave_get() is an average of a short time. This function
+ *  accumulates all energy consumed.
+ *
+ *  @param[in] dv_ind a device index
+ *  @param[inout] counter_resolution resolution of the counter @p power in
+ *  micro Joules
+ *
+ *  @param[inout] power a pointer to uint64_t to which the energy
+ *  counter will be written
+ *  If this parameter is nullptr, this function will return
+ *  ::RSMI_STATUS_INVALID_ARGS if the function is supported with the provided,
+ *  and ::RSMI_STATUS_NOT_SUPPORTED if it is not supported with the
+ *  provided arguments.
+ *
+ *  @param[inout] timestamp a pointer to uint64_t to which the timestamp
+ *  will be written. Resolution: 1 ns.
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ */
+rsmi_status_t
+rsmi_dev_energy_count_get(uint32_t dv_ind, uint64_t *power,
+                          float *counter_resolution, uint64_t *timestamp);
+
+/**
  *  @brief Get the cap on power which, when reached, causes the system to take
  *  action to reduce power.
  *
@@ -1385,6 +1654,30 @@ rsmi_dev_power_ave_get(uint32_t dv_ind, uint32_t sensor_ind, uint64_t *power);
  */
 rsmi_status_t
 rsmi_dev_power_cap_get(uint32_t dv_ind, uint32_t sensor_ind, uint64_t *cap);
+
+/**
+ *  @brief Get the default power cap for the device specified by @p dv_ind.
+ *
+ *  @details The maximum power cap be temporarily changed by the user. However,
+ *  this function always returns the default reset power cap. The power level
+ *  returned through @p power will be in microWatts.
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[inout] default_cap a pointer to a uint64_t that indicates the default
+ *  power cap, in microwatts
+ *  If this parameter is nullptr, this function will return
+ *  ::RSMI_STATUS_INVALID_ARGS if the function is supported with the provided,
+ *  arguments and ::RSMI_STATUS_NOT_SUPPORTED if it is not supported with the
+ *  provided arguments.
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ */
+rsmi_status_t
+rsmi_dev_power_cap_default_get(uint32_t dv_ind, uint64_t *default_cap);
 
 /**
  *  @brief Get the range of valid values for the power cap
@@ -1519,7 +1812,7 @@ rsmi_dev_memory_total_get(uint32_t dv_ind, rsmi_memory_type_t mem_type,
  *  @details Given a device index @p dv_ind, a type of memory @p mem_type, and
  *  a pointer to a uint64_t @p usage, this function will write the amount of
  *  @p mem_type memory that that is currently being used to the location
- *  pointed to by @p total.
+ *  pointed to by @p used.
  *
  *  @param[in] dv_ind a device index
  *
@@ -1732,6 +2025,40 @@ rsmi_status_t rsmi_dev_fan_speed_max_get(uint32_t dv_ind,
  */
 rsmi_status_t rsmi_dev_temp_metric_get(uint32_t dv_ind, uint32_t sensor_type,
                       rsmi_temperature_metric_t metric, int64_t *temperature);
+
+/**
+ *  @brief Get the voltage metric value for the specified metric, from the
+ *  specified voltage sensor on the specified device.
+ *
+ *  @details Given a device index @p dv_ind, a sensor type @p sensor_type, a
+ *  ::rsmi_voltage_metric_t @p metric and a pointer to an int64_t @p
+ *  voltage, this function will write the value of the metric indicated by
+ *  @p metric and @p sensor_type to the memory location @p voltage.
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[in] sensor_type part of device from which voltage should be
+ *  obtained. This should come from the enum ::rsmi_voltage_type_t
+ *
+ *  @param[in] metric enum indicated which voltage value should be
+ *  retrieved
+ *
+ *  @param[inout] voltage a pointer to int64_t to which the voltage
+ *  will be written, in millivolts.
+ *  If this parameter is nullptr, this function will return
+ *  ::RSMI_STATUS_INVALID_ARGS if the function is supported with the provided,
+ *  arguments and ::RSMI_STATUS_NOT_SUPPORTED if it is not supported with the
+ *  provided arguments.
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ *
+ */
+rsmi_status_t rsmi_dev_volt_metric_get(uint32_t dv_ind,
+                               rsmi_voltage_type_t sensor_type,
+                              rsmi_voltage_metric_t metric, int64_t *voltage);
 /** @} */  // end of PhysQuer
 
 /*****************************************************************************/
@@ -1816,6 +2143,41 @@ rsmi_status_t
 rsmi_dev_busy_percent_get(uint32_t dv_ind, uint32_t *busy_percent);
 
 /**
+ *  @brief Get coarse grain utilization counter of the specified device
+ *
+ *  @details Given a device index @p dv_ind, the array of the utilization counters,
+ *  the size of the array, this function returns the coarse grain utilization counters
+ *  and timestamp.
+ *  The counter is the accumulated percentages. Every milliseconds the firmware calculates
+ *  % busy count and then accumulates that value in the counter. This provides minimally
+ *  invasive coarse grain GPU usage information.
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[inout] utilization_counters Multiple utilization counters can be retreived with a single
+ *  call. The caller must allocate enough space to the utilization_counters array. The caller also
+ *  needs to set valid RSMI_UTILIZATION_COUNTER_TYPE type for each element of the array.
+ *  ::RSMI_STATUS_NOT_SUPPORTED if it is not supported with the provided arguments.
+ *
+ *  If the function reutrns RSMI_STATUS_SUCCESS, the counter will be set in the value field of
+ *  the rsmi_utilization_counter_t.
+ *
+ *  @param[in] count The size of @utilization_counters array.
+ *
+ *  @param[inout] timestamp The timestamp when the counter is retreived. Resolution: 1 ns.
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ *
+ */
+rsmi_status_t
+rsmi_utilization_count_get(uint32_t dv_ind,
+                rsmi_utilization_counter_t utilization_counters[],
+                uint32_t count,
+                uint64_t *timestamp);
+
+/**
  *  @brief Get the performance level of the device with provided
  *  device index.
  *
@@ -1842,6 +2204,29 @@ rsmi_status_t rsmi_dev_perf_level_get(uint32_t dv_ind,
                                                  rsmi_dev_perf_level_t *perf);
 
 /**
+ *  @brief Enter performance determinism mode with provided device index.
+ *
+ *  @details Given a device index @p dv_ind and @p clkvalue this function
+ *  will enable performance determinism mode, which enforces a GFXCLK frequency
+ *  SoftMax limit per GPU set by the user. This prevents the GFXCLK PLL from
+ *  stretching when running the same workload on different GPUS, making
+ *  performance variation minimal. This call will result in the performance
+ *  level ::rsmi_dev_perf_level_t of the device being
+ *  ::RSMI_DEV_PERF_LEVEL_DETERMINISM.
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[in] clkvalue Softmax value for GFXCLK in MHz.
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ *
+ */
+
+rsmi_status_t rsmi_perf_determinism_mode_set(uint32_t dv_ind, uint64_t clkvalue);
+/**
  *  @brief Get the overdrive percent associated with the device with provided
  *  device index.
  *
@@ -1864,6 +2249,7 @@ rsmi_status_t rsmi_dev_perf_level_get(uint32_t dv_ind,
  *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
  *
  */
+
 rsmi_status_t rsmi_dev_overdrive_level_get(uint32_t dv_ind, uint32_t *od);
 
 /**
@@ -1897,6 +2283,21 @@ rsmi_status_t rsmi_dev_gpu_clk_freq_get(uint32_t dv_ind,
                              rsmi_clk_type_t clk_type, rsmi_frequencies_t *f);
 
 /**
+ *  @brief Reset the gpu associated with the device with provided device index
+ *
+ *  @details Given a device index @p dv_ind, this function will reset the GPU
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ *
+ */
+rsmi_status_t rsmi_dev_gpu_reset(int32_t dv_ind);
+
+/**
  *  @brief This function retrieves the voltage/frequency curve information
  *
  *  @details Given a device index @p dv_ind and a pointer to a
@@ -1918,6 +2319,105 @@ rsmi_status_t rsmi_dev_gpu_clk_freq_get(uint32_t dv_ind,
  */
 rsmi_status_t rsmi_dev_od_volt_info_get(uint32_t dv_ind,
                                                rsmi_od_volt_freq_data_t *odv);
+
+/**
+ *  @brief This function retrieves the gpu metrics information
+ *
+ *  @details Given a device index @p dv_ind and a pointer to a
+ *  ::rsmi_gpu_metrics_t structure @p pgpu_metrics, this function will populate
+ *  @p pgpu_metrics. See ::rsmi_gpu_metrics_t for more details.
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[inout] pgpu_metrics a pointer to an ::rsmi_gpu_metrics_t structure
+ *  If this parameter is nullptr, this function will return
+ *  ::RSMI_STATUS_INVALID_ARGS if the function is supported with the provided,
+ *  arguments and ::RSMI_STATUS_NOT_SUPPORTED if it is not supported with the
+ *  provided arguments.
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ */
+rsmi_status_t rsmi_dev_gpu_metrics_info_get(uint32_t dv_ind,
+                                            rsmi_gpu_metrics_t *pgpu_metrics);
+
+/**
+ *  @brief This function sets the clock range information
+ *
+ *  @details Given a device index @p dv_ind, a minimum clock value @p minclkvalue,
+ *  a maximum clock value @p maxclkvalue and a clock type @p clkType this function
+ *  will set the sclk|mclk range
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[in] minclkvalue value to apply to the clock range. Frequency values
+ *  are in MHz.
+ *
+ *  @param[in] maxclkvalue value to apply to the clock range. Frequency values
+ *  are in MHz.
+ *
+ *  @param[in] clkType RSMI_CLK_TYPE_SYS | RSMI_CLK_TYPE_MEM range type
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ */
+rsmi_status_t rsmi_dev_clk_range_set(uint32_t dv_ind, uint64_t minclkvalue,
+                                       uint64_t maxclkvalue,
+                                       rsmi_clk_type_t clkType);
+
+/**
+ *  @brief This function sets the clock frequency information
+ *
+ *  @details Given a device index @p dv_ind, a frequency level @p level,
+ *  a clock value @p clkvalue and a clock type @p clkType this function
+ *  will set the sclk|mclk range
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[in] level RSMI_FREQ_IND_MIN|RSMI_FREQ_IND_MAX to set the
+ *  minimum (0) or maximum (1) speed.
+ *
+ *  @param[in] clkvalue value to apply to the clock range. Frequency values
+ *  are in MHz.
+ *
+ *  @param[in] clkType RSMI_CLK_TYPE_SYS | RSMI_CLK_TYPE_MEM range type
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ */
+rsmi_status_t rsmi_dev_od_clk_info_set(uint32_t dv_ind, rsmi_freq_ind_t level,
+                                       uint64_t clkvalue,
+                                       rsmi_clk_type_t clkType);
+
+/**
+ *  @brief This function sets  1 of the 3 voltage curve points.
+ *
+ *  @details Given a device index @p dv_ind, a voltage point @p vpoint
+ *  and a voltage value @p voltvalue this function will set voltage curve point
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[in] vpoint voltage point [0|1|2] on the voltage curve
+ *
+ *  @param[in] clkvalue clock value component of voltage curve point.
+ *  Frequency values are in MHz.
+ *
+ *  @param[in] voltvalue voltage value component of voltage curve point.
+ *  Voltage is in mV.
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ */
+rsmi_status_t rsmi_dev_od_volt_info_set(uint32_t dv_ind, uint32_t vpoint,
+                                        uint64_t clkvalue, uint64_t voltvalue);
 
 /**
  *  @brief This function will retrieve the current valid regions in the
@@ -2011,6 +2511,9 @@ rsmi_dev_power_profile_presets_get(uint32_t dv_ind, uint32_t sensor_ind,
  *  @brief Set the PowerPlay performance level associated with the device with
  *  provided device index with the provided value.
  *
+ *  @deprecated ::rsmi_dev_perf_level_set_v1() is preferred, with an
+ *  interface that more closely  matches the rest of the rocm_smi API.
+ *
  *  @details Given a device index @p dv_ind and an ::rsmi_dev_perf_level_t @p
  *  perf_level, this function will set the PowerPlay performance level for the
  *  device to the value @p perf_lvl.
@@ -2027,6 +2530,72 @@ rsmi_dev_power_profile_presets_get(uint32_t dv_ind, uint32_t sensor_ind,
  */
 rsmi_status_t
 rsmi_dev_perf_level_set(int32_t dv_ind, rsmi_dev_perf_level_t perf_lvl);
+
+/**
+ *  @brief Set the PowerPlay performance level associated with the device with
+ *  provided device index with the provided value.
+ *
+ *  @details Given a device index @p dv_ind and an ::rsmi_dev_perf_level_t @p
+ *  perf_level, this function will set the PowerPlay performance level for the
+ *  device to the value @p perf_lvl.
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[in] perf_lvl the value to which the performance level should be set
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS is returned upon successful call.
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_PERMISSION function requires root access
+ *
+ */
+rsmi_status_t
+rsmi_dev_perf_level_set_v1(uint32_t dv_ind, rsmi_dev_perf_level_t perf_lvl);
+
+/**
+ *  @brief Set the overdrive percent associated with the device with provided
+ *  device index with the provided value. See details for WARNING.
+ *
+ *  @deprecated This function is deprecated. ::rsmi_dev_overdrive_level_set_v1
+ *  has the same functionaltiy, with an interface that more closely
+ *  matches the rest of the rocm_smi API.
+ *
+ *  @details Given a device index @p dv_ind and an overdrive level @p od,
+ *  this function will set the overdrive level for the device to the value
+ *  @p od. The overdrive level is an integer value between 0 and 20, inclusive,
+ *  which represents the overdrive percentage; e.g., a value of 5 specifies
+ *  an overclocking of 5%.
+ *
+ *  The overdrive level is specific to the gpu system clock.
+ *
+ *  The overdrive level is the percentage above the maximum Performance Level
+ *  to which overclocking will be limited. The overclocking percentage does
+ *  not apply to clock speeds other than the maximum. This percentage is
+ *  limited to 20%.
+ *
+ *   ******WARNING******
+ *  Operating your AMD GPU outside of official AMD specifications or outside of
+ *  factory settings, including but not limited to the conducting of
+ *  overclocking (including use of this overclocking software, even if such
+ *  software has been directly or indirectly provided by AMD or otherwise
+ *  affiliated in any way with AMD), may cause damage to your AMD GPU, system
+ *  components and/or result in system failure, as well as cause other problems.
+ *  DAMAGES CAUSED BY USE OF YOUR AMD GPU OUTSIDE OF OFFICIAL AMD SPECIFICATIONS
+ *  OR OUTSIDE OF FACTORY SETTINGS ARE NOT COVERED UNDER ANY AMD PRODUCT
+ *  WARRANTY AND MAY NOT BE COVERED BY YOUR BOARD OR SYSTEM MANUFACTURER'S
+ *  WARRANTY. Please use this utility with caution.
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[in] od the value to which the overdrive level should be set
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_PERMISSION function requires root access
+ *
+ */
+rsmi_status_t rsmi_dev_overdrive_level_set(int32_t dv_ind, uint32_t od);
 
 /**
  *  @brief Set the overdrive percent associated with the device with provided
@@ -2067,7 +2636,7 @@ rsmi_dev_perf_level_set(int32_t dv_ind, rsmi_dev_perf_level_t perf_lvl);
  *  @retval ::RSMI_STATUS_PERMISSION function requires root access
  *
  */
-rsmi_status_t rsmi_dev_overdrive_level_set(int32_t dv_ind, uint32_t od);
+rsmi_status_t rsmi_dev_overdrive_level_set_v1(uint32_t dv_ind, uint32_t od);
 
 /**
  * @brief Control the set of allowed frequencies that can be used for the
@@ -2333,6 +2902,101 @@ rsmi_status_string(rsmi_status_t status, const char **status_string);
 /** @defgroup PerfCntr Performance Counter Functions
  *  These functions are used to configure, query and control performance
  *  counting.
+ *
+ *  These functions use the same mechanisms as the "perf" command line
+ *  utility. They share the same underlying resources and have some similarities
+ *  in how they are used. The events supported by this API should have
+ *  corresponding perf events that can be seen with "perf stat ...". The events
+ *  supported by perf can be seen with "perf list"
+ *
+ *  The types of events available and the ability to count those
+ *  events are dependent on which device is being targeted and if counters are
+ *  still available for that device, respectively.
+ *  ::rsmi_dev_counter_group_supported() can be used to see which event types
+ *  (::rsmi_event_group_t) are supported for a given device. Assuming a device
+ *  supports a given event type, we can then check to see if there are counters
+ *  available to count a specific event with
+ *  ::rsmi_counter_available_counters_get(). Counters may be occupied by other
+ *  perf based programs.
+ *
+ *  Once it is determined that events are supported and counters are available,
+ *  an event counter can be created/destroyed and controlled.
+ *
+ *  ::rsmi_dev_counter_create() allocates internal data structures that will be
+ *  used to used to control the event counter, and return a handle to this data
+ *  structure.
+ *
+ *  Once an event counter handle is obtained, the event counter can be
+ *  controlled (i.e., started, stopped,...) with ::rsmi_counter_control() by
+ *  passing ::rsmi_counter_command_t commands. ::RSMI_CNTR_CMD_START starts an
+ *  event counter and ::RSMI_CNTR_CMD_STOP stops a counter.
+ *  ::rsmi_counter_read() reads an event counter.
+ *
+ *  Once the counter is no longer needed, the resources it uses should be freed
+ *  by calling ::rsmi_dev_counter_destroy().
+ *
+ *
+ *  Important Notes about Counter Values
+ *  ====================================
+ *  - A running "absolute" counter is kept internally. For the discussion that
+ *  follows, we will call the internal counter value at time \a t \a
+ *  val<sub>t</sub>
+ *  - Issuing ::RSMI_CNTR_CMD_START or calling ::rsmi_counter_read(), causes
+ *  RSMI (in kernel) to internally record the current absolute counter value
+ *  - ::rsmi_counter_read() returns the number of events that have occurred
+ *  since the previously recorded value (ie, a relative value,
+ *  \a val<sub>t</sub> - val<sub>t-1</sub>) from the issuing of
+ *  ::RSMI_CNTR_CMD_START or calling ::rsmi_counter_read()
+ *
+ *  Example of event counting sequence:
+ *
+ *  \latexonly
+ *  \pagebreak
+ *  \endlatexonly
+ *  \code{.cpp}
+ *
+ *    rsmi_counter_value_t value;
+ *
+ *    // Determine if RSMI_EVNT_GRP_XGMI is supported for device dv_ind
+ *    ret = rsmi_dev_counter_group_supported(dv_ind, RSMI_EVNT_GRP_XGMI);
+ *
+ *    // See if there are counters available for device dv_ind for event
+ *    // RSMI_EVNT_GRP_XGMI
+ *
+ *    ret = rsmi_counter_available_counters_get(dv_ind,
+ *                                 RSMI_EVNT_GRP_XGMI, &counters_available);
+ *
+ *    // Assuming RSMI_EVNT_GRP_XGMI is supported and there is at least 1
+ *    // counter available for RSMI_EVNT_GRP_XGMI on device dv_ind, create
+ *    // an event object for an event of group RSMI_EVNT_GRP_XGMI (e.g.,
+ *    // RSMI_EVNT_XGMI_0_BEATS_TX) and get the handle
+ *    // (rsmi_event_handle_t).
+ *
+ *    ret = rsmi_dev_counter_create(dv_ind, RSMI_EVNT_XGMI_0_BEATS_TX,
+ *                                                          &evnt_handle);
+ *
+ *    // A program that generates the events of interest can be started
+ *    // immediately before or after starting the counters.
+ *    // Start counting:
+ *    ret = rsmi_counter_control(evnt_handle, RSMI_CNTR_CMD_START, NULL);
+ *
+ *    // Wait...
+ *
+ *    // Get the number of events since RSMI_CNTR_CMD_START was issued:
+ *    ret = rsmi_counter_read(rsmi_event_handle_t evt_handle, &value)
+ *
+ *    // Wait...
+ *
+ *    // Get the number of events since rsmi_counter_read() was last called:
+ *    ret = rsmi_counter_read(rsmi_event_handle_t evt_handle, &value)
+ *
+ *    // Stop counting.
+ *    ret = rsmi_counter_control(evnt_handle, RSMI_CNTR_CMD_STOP, NULL);
+ *
+ *    // Release all resources (e.g., counter and memory resources) associated
+ *    with evnt_handle.
+ *    ret = rsmi_dev_counter_destroy(evnt_handle);
+ *  \endcode
  *  @{
  */
 
@@ -2623,6 +3287,27 @@ rsmi_dev_xgmi_error_status(uint32_t dv_ind, rsmi_xgmi_status_t *status);
  */
 rsmi_status_t
 rsmi_dev_xgmi_error_reset(uint32_t dv_ind);
+
+/**
+ *  @brief Retrieve the XGMI hive id for a device
+ *
+ *  @details Given a device index @p dv_ind, and a pointer to an
+ *  uint64_t @p hive_id, this function will write the current XGMI
+ *  hive id for the device @p dv_ind to the memory pointed to by @p hive_id.
+ *
+ *  @param[in] dv_ind a device index
+ *
+ *  @param[inout] hive_id A pointer to an uint64_t to which the XGMI hive id
+ *  should be written
+ *
+ *  @retval ::RSMI_STATUS_SUCCESS call was successful
+ *  @retval ::RSMI_STATUS_NOT_SUPPORTED installed software or hardware does not
+ *  support this function with the given arguments
+ *  @retval ::RSMI_STATUS_INVALID_ARGS the provided arguments are not valid
+ *
+ */
+rsmi_status_t
+rsmi_dev_xgmi_hive_id_get(uint32_t dv_ind, uint64_t *hive_id);
 
 /** @} */  // end of SysInfo
 
@@ -2930,6 +3615,13 @@ rsmi_func_iter_value_get(rsmi_func_id_iter_handle_t handle,
 
 /** @} */  // end of APISupport
 
+/*****************************************************************************/
+/** @defgroup EvntNotif Event Notification Functions
+ *  These functions are used to configure for and get asynchronous event
+ *  notifications.
+ *  @{
+ */
+
 /**
  * @brief Prepare to collect event notifications for a GPU
  *
@@ -2957,8 +3649,14 @@ rsmi_event_notification_init(uint32_t dv_ind);
  * @param dv_ind a device index corresponding to the device on which to
  * listen for events
  *
- * @param mask 0 or more elements of ::rsmi_evt_notification_type_t OR'd
- * together that indicate which event types to listen for.
+ * @param mask Bitmask generated by OR'ing 1 or more elements of
+ * ::rsmi_evt_notification_type_t indicating which event types to listen for,
+ * where the rsmi_evt_notification_type_t value indicates the bit field, with
+ * bit position starting from 1.
+ * For example, if the mask field is 0x0000000000000003, which means first bit,
+ * bit 1 (bit position start from 1) and bit 2 are set, which indicate interest
+ * in receiving RSMI_EVT_NOTIF_VMFAULT (which has a value of 1) and
+ * RSMI_EVT_NOTIF_THERMAL_THROTTLE event (which has a value of 2).
  *
  * @retval ::RSMI_STATUS_INIT_ERROR is returned if
  * ::rsmi_event_notification_init() has not been called before a call to this
@@ -3032,6 +3730,8 @@ rsmi_event_notification_get(int timeout_ms,
  * @retval ::RSMI_STATUS_SUCCESS is returned upon successful call
  */
 rsmi_status_t rsmi_event_notification_stop(uint32_t dv_ind);
+
+/** @} */  // end of EvntNotif
 
 #ifdef __cplusplus
 }

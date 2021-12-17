@@ -59,6 +59,7 @@
 #include "rocm_smi/rocm_smi_exception.h"
 #include "rocm_smi/rocm_smi_utils.h"
 #include "rocm_smi/rocm_smi_device.h"
+#include "rocm_smi/rocm_smi_main.h"
 
 namespace amd {
 namespace smi {
@@ -83,19 +84,21 @@ static const char *kKFDPasidFName = "pasid";
 // static const char *kKFDNodePropGDS_SIZE_IN_KBStr =     "gds_size_in_kb";
 // static const char *kKFDNodePropNUM_GWSStr =            "num_gws";
 // static const char *kKFDNodePropWAVE_FRONT_SIZEStr =    "wave_front_size";
-// static const char *kKFDNodePropARRAY_COUNTStr =        "array_count";
-// static const char *kKFDNodePropSIMD_ARRAYS_PER_ENGINEStr =
-//                                                   "simd_arrays_per_engine";
-// static const char *kKFDNodePropCU_PER_SIMD_ARRAYStr =  "cu_per_simd_array";
-// static const char *kKFDNodePropSIMD_PER_CUStr =        "simd_per_cu";
+
+static const char *kKFDNodePropARRAY_COUNTStr = "array_count";
+static const char *kKFDNodePropSIMD_ARRAYS_PER_ENGINEStr =
+                                                     "simd_arrays_per_engine";
+static const char *kKFDNodePropCU_PER_SIMD_ARRAYStr = "cu_per_simd_array";
+// static const char *kKFDNodePropSIMD_PER_CUStr = "simd_per_cu";
 // static const char *kKFDNodePropMAX_SLOTS_SCRATCH_CUStr =
 //                                                     "max_slots_scratch_cu";
+
 // static const char *kKFDNodePropVENDOR_IDStr =          "vendor_id";
 // static const char *kKFDNodePropDEVICE_IDStr =          "device_id";
 static const char *kKFDNodePropLOCATION_IDStr =          "location_id";
 static const char *kKFDNodePropDOMAINStr =               "domain";
 // static const char *kKFDNodePropDRM_RENDER_MINORStr =   "drm_render_minor";
-// static const char *kKFDNodePropHIVE_IDStr =            "hive_id";
+static const char *kKFDNodePropHIVE_IDStr =            "hive_id";
 // static const char *kKFDNodePropNUM_SDMA_ENGINESStr =   "num_sdma_engines";
 // static const char *kKFDNodePropNUM_SDMA_XGMI_ENGINESStr =
 //                                                   "num_sdma_xgmi_engines";
@@ -154,6 +157,22 @@ static int OpenKFDNodeFile(uint32_t dev_id, std::string node_file,
   return 0;
 }
 
+bool KFDNodeSupported(uint32_t node_indx) {
+  std::ifstream fs;
+  bool ret = true;
+  int err;
+  err = OpenKFDNodeFile(node_indx, "properties", &fs);
+
+  if (err == ENOENT) {
+    return false;
+  }
+  if (fs.peek() == std::ifstream::traits_type::eof()) {
+    ret = false;
+  }
+  fs.close();
+  return ret;
+}
+
 int ReadKFDDeviceProperties(uint32_t kfd_node_id,
                                            std::vector<std::string> *retVec) {
   std::string line;
@@ -175,7 +194,7 @@ int ReadKFDDeviceProperties(uint32_t kfd_node_id,
 
   if (retVec->size() == 0) {
     fs.close();
-    return 0;
+    return ENOENT;
   }
   // Remove any *trailing* empty (whitespace) lines
   while (retVec->back().find_first_not_of(" \t\n\v\f\r") == std::string::npos) {
@@ -214,7 +233,7 @@ static int ReadKFDGpuId(uint32_t kfd_node_id, uint64_t *gpu_id) {
     return ENXIO;
   }
 
-  *gpu_id = std::stoi(gpu_id_str);
+  *gpu_id = static_cast<uint64_t>(std::stoi(gpu_id_str));
   return 0;
 }
 
@@ -277,7 +296,8 @@ int GetProcessInfo(rsmi_process_info_t *procs, uint32_t num_allocated,
       int err;
       std::string tmp;
 
-      procs[*num_procs_found].process_id = std::stoi(proc_id_str);
+      procs[*num_procs_found].process_id =
+                                static_cast<uint32_t>(std::stoi(proc_id_str));
 
       std::string pasid_str_path = kKFDProcPathRoot;
       pasid_str_path += "/";
@@ -295,7 +315,7 @@ int GetProcessInfo(rsmi_process_info_t *procs, uint32_t num_allocated,
         closedir(proc_dir);
         return EINVAL;
       }
-      procs[*num_procs_found].pasid = std::stoi(tmp);
+      procs[*num_procs_found].pasid = static_cast<uint32_t>(std::stoi(tmp));
     }
     ++(*num_procs_found);
 
@@ -365,7 +385,7 @@ int GetProcessGPUs(uint32_t pid, std::unordered_set<uint64_t> *gpu_set) {
 
     uint64_t val;
     try {
-      val = std::stoi(tmp);
+      val = static_cast<uint64_t>(std::stoi(tmp));
     } catch (...) {
       std::cerr << "Error; read invalid data: " << tmp << " from " <<
                                                     q_gpu_id_str << std::endl;
@@ -414,9 +434,16 @@ int GetProcessInfoForPID(uint32_t pid, rsmi_process_info_t *proc,
   if (!is_number(tmp)) {
     return EINVAL;
   }
-  proc->pasid = std::stoi(tmp);
+  proc->pasid = static_cast<uint32_t>(std::stoi(tmp));
 
   proc->vram_usage = 0;
+  proc->sdma_usage = 0;
+  proc->cu_occupancy = 0;
+
+  uint32_t cu_count = 0;
+  static amd::smi::RocmSMI& smi = amd::smi::RocmSMI::getInstance();
+  static std::map<uint64_t, std::shared_ptr<KFDNode>>& kfd_node_map =
+                                                           smi.kfd_node_map();
 
   for (itr = gpu_set->begin(); itr != gpu_set->end(); itr++) {
     uint64_t gpu_id = (*itr);
@@ -434,7 +461,45 @@ int GetProcessInfoForPID(uint32_t pid, rsmi_process_info_t *proc,
       return EINVAL;
     }
 
-    proc->vram_usage += std::stoi(tmp);
+    proc->vram_usage += std::stoull(tmp);
+
+    std::string sdma_str_path = proc_str_path;
+    sdma_str_path += "/sdma_";
+    sdma_str_path += std::to_string(gpu_id);
+
+    err = ReadSysfsStr(sdma_str_path, &tmp);
+    if (err) {
+      return err;
+    }
+
+    if (!is_number(tmp)) {
+      return EINVAL;
+    }
+
+    proc->sdma_usage += std::stoull(tmp);
+
+    // Build the path and read from Sysfs file, info that
+    // encodes Compute Unit usage by a process of interest
+    std::string cu_occupancy_path = proc_str_path;
+    cu_occupancy_path += "/stats_";
+    cu_occupancy_path += std::to_string(gpu_id);
+    cu_occupancy_path += "/cu_occupancy";
+    err = ReadSysfsStr(cu_occupancy_path, &tmp);
+    if (err == 0) {
+      if (!is_number(tmp)) {
+        return EINVAL;
+      }
+      // Update CU usage by the process
+      proc->cu_occupancy += std::stoi(tmp);
+
+      // Collect count of compute units
+      cu_count += kfd_node_map[gpu_id]->cu_count();
+    }
+  }
+
+  // Adjust CU occupancy to percent.
+  if (cu_count > 0) {
+    proc->cu_occupancy = ((proc->cu_occupancy * 100) / cu_count);
   }
 
   return 0;
@@ -470,7 +535,13 @@ int DiscoverKFDNodes(std::map<uint64_t, std::shared_ptr<KFDNode>> *nodes) {
       continue;
     }
 
-    node_indx = std::stoi(dentry->d_name);
+    node_indx = static_cast<uint32_t>(std::stoi(dentry->d_name));
+
+    if (!KFDNodeSupported(node_indx)) {
+      dentry = readdir(kfd_node_dir);
+      continue;
+    }
+
     node = std::shared_ptr<KFDNode>(new KFDNode(node_indx));
 
     node->Initialize();
@@ -488,12 +559,16 @@ int DiscoverKFDNodes(std::map<uint64_t, std::shared_ptr<KFDNode>> *nodes) {
       node->get_property_value(kKFDNodePropLOCATION_IDStr,
                                                         &kfd_gpu_node_bus_fn);
     if (ret != 0) {
+      std:: cerr << "Failed to open properties file for kfd node " <<
+                                       node->node_index() << "." << std::endl;
       closedir(kfd_node_dir);
       return ret;
     }
     ret =
         node->get_property_value(kKFDNodePropDOMAINStr, &kfd_gpu_node_domain);
     if (ret != 0) {
+      std::cerr << "Failed to get \"domain\" properity from properties "
+              "files for kfd node " << node->node_index() << "." << std::endl;
       closedir(kfd_node_dir);
       return ret;
     }
@@ -506,6 +581,10 @@ int DiscoverKFDNodes(std::map<uint64_t, std::shared_ptr<KFDNode>> *nodes) {
   }
 
   if (closedir(kfd_node_dir)) {
+    std::string err_str = "Failed to close KFD node directory ";
+    err_str += kKFDNodesPathRoot;
+    err_str += ".";
+    perror(err_str.c_str());
     return 1;
   }
   return 0;
@@ -560,6 +639,12 @@ KFDNode::Initialize(void) {
 
   ret = ReadKFDGpuName(node_indx_, &name_);
 
+  ret = get_property_value(kKFDNodePropHIVE_IDStr, &xgmi_hive_id_);
+  if (ret != 0) {
+    throw amd::smi::rsmi_exception(RSMI_INITIALIZATION_ERROR,
+    "Failed to initialize rocm_smi library (get xgmi hive id).");
+  }
+
   std::map<uint32_t, std::shared_ptr<IOLink>> io_link_map_tmp;
   ret = DiscoverIOLinksPerNode(node_indx_, &io_link_map_tmp);
   if (ret != 0) {
@@ -596,6 +681,29 @@ KFDNode::Initialize(void) {
       io_link_weight_[node_to] = link->weight();
     }
   }
+
+  // Pre-compute the total number of compute units a device has
+  uint64_t tmp_val;
+  ret = get_property_value(kKFDNodePropSIMD_ARRAYS_PER_ENGINEStr, &tmp_val);
+  if (ret != 0) {
+    throw amd::smi::rsmi_exception(RSMI_INITIALIZATION_ERROR,
+    "Failed to initialize rocm_smi library "
+                                 "(get number of shader arrays per engine).");
+  }
+  cu_count_ = uint32_t(tmp_val);
+  ret = get_property_value(kKFDNodePropARRAY_COUNTStr, &tmp_val);
+  if (ret != 0) {
+    throw amd::smi::rsmi_exception(RSMI_INITIALIZATION_ERROR,
+    "Failed to initialize rocm_smi library (get number of shader arrays).");
+  }
+  cu_count_ = cu_count_ * uint32_t(tmp_val);
+  ret = get_property_value(kKFDNodePropCU_PER_SIMD_ARRAYStr, &tmp_val);
+  if (ret != 0) {
+    throw amd::smi::rsmi_exception(RSMI_INITIALIZATION_ERROR,
+    "Failed to initialize rocm_smi library (get number of CU's per array).");
+  }
+  cu_count_ = cu_count_ * uint32_t(tmp_val);
+
   return ret;
 }
 

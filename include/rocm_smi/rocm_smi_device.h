@@ -99,6 +99,8 @@ enum DevInfoTypes {
   kDevPerfLevel,
   kDevOverDriveLevel,
   kDevDevID,
+  kDevDevProdName,
+  kDevDevProdNum,
   kDevVendorID,
   kDevSubSysDevID,
   kDevSubSysVendorID,
@@ -152,7 +154,9 @@ enum DevInfoTypes {
   kDevFwVersionVcn,
   kDevSerialNumber,
   kDevMemPageBad,
-  kDevNumaNode
+  kDevNumaNode,
+  kDevGpuMetrics,
+  kDevGpuReset
 };
 
 typedef struct {
@@ -175,6 +179,8 @@ class Device {
     int readDevInfoLine(DevInfoTypes type, std::string *line);
     int readDevInfo(DevInfoTypes type, std::string *val);
     int readDevInfo(DevInfoTypes type, std::vector<std::string> *retVec);
+    int readDevInfo(DevInfoTypes type, std::size_t b_size,
+                                      void *p_binary_data);
     int writeDevInfo(DevInfoTypes type, uint64_t val);
     int writeDevInfo(DevInfoTypes type, std::string val);
 
@@ -195,7 +201,10 @@ class Device {
     void set_evt_notif_anon_file_ptr(FILE *f) {evt_notif_anon_file_ptr_ = f;}
     FILE *evt_notif_anon_file_ptr(void) const {return evt_notif_anon_file_ptr_;}
     void set_evt_notif_anon_fd(int fd) {evt_notif_anon_fd_ = fd;}
+    void set_evt_notif_anon_fd(uint32_t fd) {
+                                   evt_notif_anon_fd_ = static_cast<int>(fd);}
     int evt_notif_anon_fd(void) const {return evt_notif_anon_fd_;}
+    metrics_table_header_t & gpu_metrics_ver(void) {return gpu_metrics_ver_;}
     void fillSupportedFuncs(void);
     void DumpSupportedFunctions(void);
     bool DeviceAPISupported(std::string name, uint64_t variant,
@@ -209,11 +218,16 @@ class Device {
     uint32_t card_indx_;  // This index corresponds to the drm index (ie, card#)
     uint32_t drm_render_minor_;
     const RocmSMI_env_vars *env_;
+    template <typename T> int openDebugFileStream(DevInfoTypes type, T *fs,
+                                                   const char *str = nullptr);
     template <typename T> int openSysfsFileStream(DevInfoTypes type, T *fs,
                                                    const char *str = nullptr);
+    int readDebugInfoStr(DevInfoTypes type, std::string *retStr);
     int readDevInfoStr(DevInfoTypes type, std::string *retStr);
     int readDevInfoMultiLineStr(DevInfoTypes type,
                                             std::vector<std::string> *retVec);
+    int readDevInfoBinary(DevInfoTypes type, std::size_t b_size,
+                                            void *p_binary_data);
     int writeDevInfoStr(DevInfoTypes type, std::string valStr);
     uint64_t bdfid_;
     uint64_t kfd_gpu_id_;
@@ -224,6 +238,7 @@ class Device {
 
     int evt_notif_anon_fd_;
     FILE *evt_notif_anon_file_ptr_;
+    struct metrics_table_header_t gpu_metrics_ver_;
 };
 
 }  // namespace smi

@@ -59,7 +59,8 @@ class TestBase {
   // i.e. init runtime, prepare packet...
   // The init_flags option will override any flags set for the whole test
   // suite
-  virtual void SetUp(uint64_t init_flags = 0);
+  void SetUp(uint64_t init_flags);
+  virtual void SetUp(void);
 
   // @Brief: Core measurement codes executing here
   virtual void Run(void);
@@ -107,21 +108,30 @@ class TestBase {
   uint64_t init_options(void) const {
     return init_options_;
   }
+  void set_num_iterations(uint32_t x) {
+    num_iterations_ = x;
+  }
+  uint32_t num_iterations(void) const {
+    return num_iterations_;
+  }
 
  protected:
+  void MakeHeaderStr(const char *inStr, std::string *outStr) const;
   void PrintDeviceHeader(uint32_t dv_ind);
   bool setup_failed_;   ///< Record that setup failed to return ierr in Run
+  uint32_t num_monitor_devs_;  ///< Number of monitor devices found
 
  private:
-  uint32_t num_monitor_devs_;  ///< Number of monitor devices found
   std::string description_;
   std::string title_;   ///< Displayed title of test
   uint32_t verbosity_;   ///< How much additional output to produce
   bool dont_fail_;       ///< Don't quit test on individual failure if true
   uint64_t init_options_;  ///< rsmi initialization options
+  uint32_t num_iterations_;
 };
 
 #define IF_VERB(VB) if (verbosity() && verbosity() >= (TestBase::VERBOSE_##VB))
+#define IF_NVERB(VB) if (verbosity() < (TestBase::VERBOSE_##VB))
 
 // Macros to be used within TestBase classes
 #define CHK_ERR_ASRT(RET) { \

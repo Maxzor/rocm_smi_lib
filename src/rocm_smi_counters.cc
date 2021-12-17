@@ -72,6 +72,7 @@ static const char *kPathDeviceEventRoot = "/sys/bus/event_source/devices";
 
 // Event group names
 static const char *kEvGrpDataFabricFName = "amdgpu_df_#";
+static const char *kEvGrpAmdGpuFName = "amdgpu_#";
 
 // Data Fabric event file names
 static const char *kDFEvtCake0FtiReqAllocFName = "cake0_ftiinstat_reqalloc";
@@ -83,6 +84,14 @@ static const char *kDFEvtCake1FtiRspAllocFName = "cake1_ftiinstat_rspalloc";
 static const char *kDFEvtCake1PcsOutTxDataFName = "cake1_pcsout_txdata";
 static const char *kDFEvtCake1PcsOutTxMetaFName = "cake1_pcsout_txmeta";
 
+// XGMI Data Outbound event file names
+static const char *kXGMIDOutBound0FName = "xgmi_link0_data_outbound";
+static const char *kXGMIDOutBound1FName = "xgmi_link1_data_outbound";
+static const char *kXGMIDOutBound2FName = "xgmi_link2_data_outbound";
+static const char *kXGMIDOutBound3FName = "xgmi_link3_data_outbound";
+static const char *kXGMIDOutBound4FName = "xgmi_link4_data_outbound";
+static const char *kXGMIDOutBound5FName = "xgmi_link5_data_outbound";
+
 
 static const std::map<rsmi_event_type_t, const char *> kEventFNameMap = {
   {RSMI_EVNT_XGMI_0_NOP_TX,      kDFEvtCake0PcsOutTxMetaFName},
@@ -93,10 +102,18 @@ static const std::map<rsmi_event_type_t, const char *> kEventFNameMap = {
   {RSMI_EVNT_XGMI_1_REQUEST_TX,  kDFEvtCake1FtiReqAllocFName},
   {RSMI_EVNT_XGMI_1_RESPONSE_TX, kDFEvtCake1FtiRspAllocFName},
   {RSMI_EVNT_XGMI_1_BEATS_TX,    kDFEvtCake1PcsOutTxDataFName},
+
+  {RSMI_EVNT_XGMI_DATA_OUT_0,    kXGMIDOutBound0FName},
+  {RSMI_EVNT_XGMI_DATA_OUT_1,    kXGMIDOutBound1FName},
+  {RSMI_EVNT_XGMI_DATA_OUT_2,    kXGMIDOutBound2FName},
+  {RSMI_EVNT_XGMI_DATA_OUT_3,    kXGMIDOutBound3FName},
+  {RSMI_EVNT_XGMI_DATA_OUT_4,    kXGMIDOutBound4FName},
+  {RSMI_EVNT_XGMI_DATA_OUT_5,    kXGMIDOutBound5FName},
 };
 
 static const std::map<rsmi_event_group_t, const char *> kEvtGrpFNameMap = {
-    {RSMI_EVNT_GRP_XGMI, kEvGrpDataFabricFName},
+    {RSMI_EVNT_GRP_XGMI,          kEvGrpDataFabricFName},
+    {RSMI_EVNT_GRP_XGMI_DATA_OUT, kEvGrpAmdGpuFName},
     {RSMI_EVNT_GRP_INVALID, "bogus"},
 };
 
@@ -107,6 +124,7 @@ static rsmi_event_group_t EvtGrpFromEvtID(rsmi_event_type_t evnt) {
     return EVGRP_ENUM; \
   }
   EVNT_GRP_RANGE_CHK(XGMI, RSMI_EVNT_GRP_XGMI);
+  EVNT_GRP_RANGE_CHK(XGMI_DATA_OUT, RSMI_EVNT_GRP_XGMI_DATA_OUT);
 
   return RSMI_EVNT_GRP_INVALID;
 }
@@ -120,7 +138,7 @@ GetSupportedEventGroups(uint32_t dev_num, dev_evt_grp_set_t *supported_grps) {
 
   std::string grp_path_base;
   std::string grp_path;
-  uint32_t ret;
+  int32_t ret;
 
   grp_path_base = kPathDeviceEventRoot;
   grp_path_base += '/';
@@ -146,7 +164,7 @@ GetSupportedEventGroups(uint32_t dev_num, dev_evt_grp_set_t *supported_grps) {
 }
 //  /sys/bus/event_source/devices/<hw block>_<instance>/type
 Event::Event(rsmi_event_type_t event, uint32_t dev_ind)  :
-                                       event_type_(event) {
+                                       event_type_(event), prev_cntr_val_(0) {
   fd_ = -1;
   rsmi_event_group_t grp = EvtGrpFromEvtID(event);
   assert(grp != RSMI_EVNT_GRP_INVALID);  // This should have failed before now
@@ -157,8 +175,8 @@ Event::Event(rsmi_event_type_t event, uint32_t dev_ind)  :
 
 
   amd::smi::RocmSMI& smi = amd::smi::RocmSMI::getInstance();
-  assert(dev_ind < smi.monitor_devices().size());
-  std::shared_ptr<amd::smi::Device> dev = smi.monitor_devices()[dev_ind];
+  assert(dev_ind < smi.devices().size());
+  std::shared_ptr<amd::smi::Device> dev = smi.devices()[dev_ind];
   assert(dev != nullptr);
 
 
@@ -207,9 +225,9 @@ parse_field_config(std::string fstr, evnt_info_t *val) {
   val->field_size = static_cast<uint8_t>(end_bit - start_bit + 1);
 }
 
-static uint32_t
+static int32_t
 get_event_bitfield_info(std::string *config_path, evnt_info_t *val) {
-  uint32_t err;
+  int32_t err;
 
   std::string fstr;
 
@@ -222,9 +240,9 @@ get_event_bitfield_info(std::string *config_path, evnt_info_t *val) {
   return 0;
 }
 
-uint32_t
+int32_t
 Event::get_event_file_info(void) {
-  uint32_t err;
+  int32_t err;
 
   std::string fn = evt_path_root_;
   std::string fstr;
@@ -264,7 +282,7 @@ Event::get_event_file_info(void) {
   return 0;
 }
 
-uint32_t
+int32_t
 Event::get_event_type(uint32_t *ev_type) {
   assert(ev_type != nullptr);
   if (ev_type == nullptr) {
@@ -298,9 +316,9 @@ get_perf_attr_config(std::vector<evnt_info_t> *ev_info) {
   return ret_val;
 }
 
-uint32_t
+int32_t
 amd::smi::evt::Event::openPerfHandle(void) {
-  uint32_t ret;
+  int32_t ret;
 
   memset(&attr_, 0, sizeof(struct perf_event_attr));
 
@@ -315,6 +333,7 @@ amd::smi::evt::Event::openPerfHandle(void) {
 
   attr_.size = sizeof(struct perf_event_attr);
   attr_.config = get_perf_attr_config(&event_info_);
+  attr_.sample_type = PERF_SAMPLE_IDENTIFIER;
   attr_.read_format = PERF_FORMAT_TOTAL_TIME_ENABLED |
                           PERF_FORMAT_TOTAL_TIME_RUNNING;
   attr_.disabled = 1;
@@ -331,7 +350,7 @@ amd::smi::evt::Event::openPerfHandle(void) {
   return 0;
 }
 
-uint32_t
+int32_t
 amd::smi::evt::Event::startCounter(void) {
   int32_t ret;
 
@@ -351,7 +370,7 @@ amd::smi::evt::Event::startCounter(void) {
   return 0;
 }
 
-uint32_t
+int32_t
 amd::smi::evt::Event::stopCounter(void) {
   int32_t ret;
 
@@ -370,23 +389,25 @@ amd::smi::evt::Event::stopCounter(void) {
 
 static ssize_t
 readn(int fd, void *buf, size_t n) {
-  ssize_t left = n;
+  size_t left = n;
   ssize_t bytes;
 
   while (left) {
     bytes = read(fd, buf, left);
-    if (!bytes) /* reach EOF */
-      return (n - left);
+    if (!bytes) { /* reach EOF */
+      return static_cast<ssize_t>(n - left);
+    }
     if (bytes < 0) {
       if (errno == EINTR) /* read got interrupted */
         continue;
       else
         return -errno;
     }
-    left -= bytes;
+
+    left -= static_cast<size_t>(bytes);
     buf = reinterpret_cast<void *>((reinterpret_cast<uint8_t *>(buf) + bytes));
   }
-  return n;
+  return static_cast<ssize_t>(n);
 }
 
 uint32_t
@@ -404,7 +425,8 @@ amd::smi::evt::Event::getValue(rsmi_counter_value_t *val) {
     return EIO;
   }
 
-  val->value = pvalue.value;
+  val->value = pvalue.value - prev_cntr_val_;
+  prev_cntr_val_ = pvalue.value;
   val->time_enabled = pvalue.enabled_time;
   val->time_running = pvalue.run_time;
 

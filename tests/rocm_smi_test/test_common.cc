@@ -55,6 +55,27 @@
 #include "rocm_smi_test/test_common.h"
 #include "rocm_smi/rocm_smi.h"
 
+static const std::map<rsmi_dev_perf_level_t, const char *>
+   kDevPerfLvlNameMap = {
+    {RSMI_DEV_PERF_LEVEL_AUTO, "RSMI_DEV_PERF_LEVEL_AUTO"},
+    {RSMI_DEV_PERF_LEVEL_LOW, "RSMI_DEV_PERF_LEVEL_LOW"},
+    {RSMI_DEV_PERF_LEVEL_HIGH, "RSMI_DEV_PERF_LEVEL_HIGH"},
+    {RSMI_DEV_PERF_LEVEL_MANUAL, "RSMI_DEV_PERF_LEVEL_MANUAL"},
+    {RSMI_DEV_PERF_LEVEL_STABLE_STD, "RSMI_DEV_PERF_LEVEL_STABLE_STD"},
+    {RSMI_DEV_PERF_LEVEL_STABLE_PEAK, "RSMI_DEV_PERF_LEVEL_STABLE_PEAK"},
+    {RSMI_DEV_PERF_LEVEL_STABLE_MIN_MCLK,
+                                       "RSMI_DEV_PERF_LEVEL_STABLE_MIN_MCLK"},
+    {RSMI_DEV_PERF_LEVEL_STABLE_MIN_SCLK,
+                                       "RSMI_DEV_PERF_LEVEL_STABLE_MIN_SCLK"},
+    {RSMI_DEV_PERF_LEVEL_DETERMINISM, "RSMI_DEV_PERF_LEVEL_DETERMINISM"},
+
+    {RSMI_DEV_PERF_LEVEL_UNKNOWN, "RSMI_DEV_PERF_LEVEL_UNKNOWN"},
+};
+// If the assert below fails, the map above needs to be updated to match
+// rsmi_dev_perf_level_t.
+static_assert(RSMI_DEV_PERF_LEVEL_LAST == RSMI_DEV_PERF_LEVEL_DETERMINISM,
+                                    "kDevPerfLvlNameMap needs to be updated");
+
 static const std::map<rsmi_gpu_block_t, const char *> kBlockNameMap = {
     {RSMI_GPU_BLOCK_UMC, "UMC"},
     {RSMI_GPU_BLOCK_SDMA, "SDMA"},
@@ -80,9 +101,8 @@ static const char * kRasErrStateStrings[] = {
     "Error Unknown",                 // RSMI_RAS_ERR_STATE_PARITY
     "Single, Correctable",           // RSMI_RAS_ERR_STATE_SING_C
     "Multiple, Uncorrectable",       // RSMI_RAS_ERR_STATE_MULT_UC
-    "Poison"                         // RSMI_RAS_ERR_STATE_POISON
-    "Off",                           // RSMI_RAS_ERR_STATE_DISABLED
-    "On",                            // RSMI_RAS_ERR_STATE_ENABLED
+    "Poison",                        // RSMI_RAS_ERR_STATE_POISON
+    "Enabled",                       // RSMI_RAS_ERR_STATE_ENABLED
 };
 static_assert(
   sizeof(kRasErrStateStrings)/sizeof(char *) == (RSMI_RAS_ERR_STATE_LAST + 1),
@@ -118,6 +138,10 @@ static const struct option long_options[] = {
   {nullptr, 0, nullptr, 0}
 };
 static const char* short_options = "i:v:m:fr";
+
+static const std::map<uint32_t, std::string> kVoltSensorNameMap = {
+    {RSMI_VOLT_TYPE_VDDGFX, "Vddgfx"},
+};
 
 static void PrintHelp(void) {
   std::cout <<
@@ -178,13 +202,18 @@ uint32_t ProcessCmdline(RSMITstGlobals* test, int arg_cnt, char** arg_list) {
   return 0;
 }
 
+const char *GetPerfLevelStr(rsmi_dev_perf_level_t lvl) {
+  return kDevPerfLvlNameMap.at(lvl);
+}
 const char *GetBlockNameStr(rsmi_gpu_block_t id) {
   return kBlockNameMap.at(id);
 }
 const char *GetErrStateNameStr(rsmi_ras_err_state_t st) {
   return kErrStateNameMap.at(st);
 }
-
+const std::string GetVoltSensorNameStr(rsmi_voltage_type_t st) {
+  return kVoltSensorNameMap.at(st);
+}
 const char *FreqEnumToStr(rsmi_clk_type rsmi_clk) {
   static_assert(RSMI_CLK_TYPE_LAST == RSMI_CLK_TYPE_MEM,
                                        "FreqEnumToStr() needs to be updated");

@@ -73,7 +73,7 @@ GetSupportedEventGroups(uint32_t dev_ind, dev_evt_grp_set_t*supported_grps);
 struct evnt_info_t {
     uint8_t start_bit;
     uint8_t field_size;
-    uint32_t value;
+    uint64_t value;
 };
 
 struct perf_read_format_t {
@@ -92,9 +92,9 @@ class Event {
     explicit Event(rsmi_event_type_t event, uint32_t dev_ind);
     ~Event(void);
 
-    uint32_t openPerfHandle();
-    uint32_t startCounter(void);
-    uint32_t stopCounter(void);
+    int32_t openPerfHandle();
+    int32_t startCounter(void);
+    int32_t stopCounter(void);
     uint32_t getValue(rsmi_counter_value_t *val);
     uint32_t dev_file_ind(void) const {return dev_file_ind_;}
     uint32_t dev_ind(void) const {return dev_ind_;}
@@ -110,9 +110,9 @@ class Event {
     uint32_t dev_ind_;
     int32_t fd_;
     perf_event_attr attr_;
-
-    uint32_t get_event_file_info(void);
-    uint32_t get_event_type(uint32_t *ev_type);
+    uint64_t prev_cntr_val_;
+    int32_t get_event_file_info(void);
+    int32_t get_event_type(uint32_t *ev_type);
 };
 
 

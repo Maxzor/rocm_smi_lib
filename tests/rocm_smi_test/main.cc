@@ -55,6 +55,7 @@
 #include "functional/fan_read.h"
 #include "functional/fan_read_write.h"
 #include "functional/temp_read.h"
+#include "functional/volt_read.h"
 #include "functional/volt_freq_curv_read.h"
 #include "functional/perf_level_read.h"
 #include "functional/overdrive_read.h"
@@ -81,6 +82,9 @@
 #include "functional/evt_notif_read_write.h"
 #include "functional/init_shutdown_refcount.h"
 #include "rocm_smi_test/functional/hw_topology_read.h"
+#include "rocm_smi_test/functional/gpu_metrics_read.h"
+#include "rocm_smi_test/functional/metrics_counter_read.h"
+#include "rocm_smi_test/functional/perf_determinism.h"
 
 static RSMITstGlobals *sRSMIGlvalues = nullptr;
 
@@ -90,20 +94,24 @@ static void SetFlags(TestBase *test) {
   test->set_verbosity(sRSMIGlvalues->verbosity);
   test->set_dont_fail(sRSMIGlvalues->dont_fail);
   test->set_init_options(sRSMIGlvalues->init_options);
+  test->set_num_iterations(sRSMIGlvalues->num_iterations);
 }
-
 
 static void RunCustomTestProlog(TestBase *test) {
   SetFlags(test);
 
-  test->DisplayTestInfo();
+  if (sRSMIGlvalues->verbosity >= TestBase::VERBOSE_STANDARD) {
+    test->DisplayTestInfo();
+  }
   test->SetUp();
   test->Run();
   return;
 }
-static void RunCustomTestEpilog(TestBase *test) {
-  test->DisplayResults();
-  test->Close();
+static void RunCustomTestEpilog(TestBase *tst) {
+  if (sRSMIGlvalues->verbosity >= TestBase::VERBOSE_STANDARD) {
+    tst->DisplayResults();
+  }
+  tst->Close();
   return;
 }
 
@@ -141,6 +149,10 @@ TEST(rsmitstReadWrite, FanReadWrite) {
 }
 TEST(rsmitstReadOnly, TempRead) {
   TestTempRead tst;
+  RunGenericTest(&tst);
+}
+TEST(rsmitstReadOnly, VoltRead) {
+  TestVoltRead tst;
   RunGenericTest(&tst);
 }
 TEST(rsmitstReadOnly, TestVoltCurvRead) {
@@ -219,6 +231,18 @@ TEST(rsmitstReadOnly, TestHWTopologyRead) {
   TestHWTopologyRead tst;
   RunGenericTest(&tst);
 }
+TEST(rsmitstReadOnly, TestGpuMetricsRead) {
+  TestGpuMetricsRead tst;
+  RunGenericTest(&tst);
+}
+TEST(rsmitstReadOnly, TestMetricsCounterRead) {
+  TestMetricsCounterRead tst;
+  RunGenericTest(&tst);
+}
+TEST(rsmitstReadWrite, TestPerfDeterminism) {
+  TestPerfDeterminism tst;
+  RunGenericTest(&tst);
+}
 TEST(rsmitstReadWrite, TestXGMIReadWrite) {
   TestXGMIReadWrite tst;
   RunGenericTest(&tst);
@@ -233,7 +257,7 @@ TEST(rsmitstReadOnly, TestAPISupportRead) {
 }
 TEST(rsmitstReadOnly, TestMutualExclusion) {
   TestMutualExclusion tst;
-
+  SetFlags(&tst);
   tst.DisplayTestInfo();
   tst.SetUp();
   tst.Run();
@@ -245,6 +269,7 @@ TEST(rsmitstReadWrite, TestEvtNotifReadWrite) {
 }
 TEST(rsmitstReadOnly, TestConcurrentInit) {
   TestConcurrentInit tst;
+  SetFlags(&tst);
   tst.DisplayTestInfo();
   //  tst.SetUp();   // Avoid extra rsmi_init
   tst.Run();

@@ -77,8 +77,12 @@ NameFromFWEnum(rsmi_fw_block_t blk) {
   return kDevFWNameMap.at(blk);
 }
 
-static const std::map<rsmi_evt_notification_type_t, const char *> kEvtNotifEvntNameMap = {
+static const std::map<rsmi_evt_notification_type_t, const char *>
+                                                      kEvtNotifEvntNameMap = {
     {RSMI_EVT_NOTIF_VMFAULT, "RSMI_EVT_NOTIF_VMFAULT"},
+    {RSMI_EVT_NOTIF_THERMAL_THROTTLE, "RSMI_EVT_NOTIF_THERMAL_THROTTLE"},
+    {RSMI_EVT_NOTIF_GPU_PRE_RESET, "RSMI_EVT_NOTIF_GPU_PRE_RESET"},
+    {RSMI_EVT_NOTIF_GPU_POST_RESET, "RSMI_EVT_NOTIF_GPU_POST_RESET"},
 };
 const char *
 NameFromEvtNotifType(rsmi_evt_notification_type_t evt) {

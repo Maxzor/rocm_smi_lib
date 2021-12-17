@@ -88,25 +88,34 @@ void TestEvtNotifReadWrite::Run(void) {
   uint32_t dv_ind;
 
   TestBase::Run();
+  if (num_monitor_devs() == 0) {
+    return;
+  }
+
   if (setup_failed_) {
-    std::cout << "** SetUp Failed for this test. Skipping.**" << std::endl;
+     IF_VERB(STANDARD) {
+        std::cout << "** SetUp Failed for this test. Skipping.**" <<
+                                                                    std::endl;
+     }
     return;
   }
 
   rsmi_evt_notification_type_t evt_type = RSMI_EVT_NOTIF_FIRST;
-  uint64_t mask = evt_type;
-  while (evt_type != RSMI_EVT_NOTIF_LAST) {
-    mask |= evt_type;
+  uint64_t mask = RSMI_EVENT_MASK_FROM_INDEX(evt_type);
+  while (evt_type <= RSMI_EVT_NOTIF_LAST) {
+    mask |= RSMI_EVENT_MASK_FROM_INDEX(evt_type);
     evt_type = static_cast<rsmi_evt_notification_type_t>(
-                                           static_cast<uint64_t>(evt_type)*2);
+                                           static_cast<uint32_t>(evt_type)+1);
   }
 
   for (dv_ind = 0; dv_ind < num_monitor_devs(); ++dv_ind) {
     ret = rsmi_event_notification_init(dv_ind);
     if (ret == RSMI_STATUS_NOT_SUPPORTED) {
-      std::cout <<
+      IF_VERB(STANDARD) {
+        std::cout <<
           "Event notification is not supported for this driver version." <<
                                                                     std::endl;
+      }
       return;
     }
     ASSERT_EQ(ret, RSMI_STATUS_SUCCESS);
@@ -116,27 +125,69 @@ void TestEvtNotifReadWrite::Run(void) {
 
   rsmi_evt_notification_data_t data[10];
   uint32_t num_elem = 10;
+  bool read_again = false;
 
   ret = rsmi_event_notification_get(10000, &num_elem, data);
   if (ret == RSMI_STATUS_SUCCESS || ret == RSMI_STATUS_INSUFFICIENT_SIZE) {
     EXPECT_LE(num_elem, 10) <<
             "Expected the number of elements found to be <= buffer size (10)";
-    for (uint32_t i = 0; i < num_elem; ++i) {
-      std::cout << "\tdv_ind=" << data[i].dv_ind <<
+    IF_VERB(STANDARD) {
+      for (uint32_t i = 0; i < num_elem; ++i) {
+        std::cout << "\tdv_ind=" << data[i].dv_ind <<
                    "  Type: " << NameFromEvtNotifType(data[i].event) <<
                    "  Mesg: " << data[i].message << std::endl;
+        if (data[i].event == RSMI_EVT_NOTIF_GPU_PRE_RESET) {
+          read_again = true;
+        }
+      }
     }
-    if (ret == RSMI_STATUS_INSUFFICIENT_SIZE) {
+    IF_VERB(STANDARD) {
+      if (ret == RSMI_STATUS_INSUFFICIENT_SIZE) {
         std::cout <<
         "\t\tBuffer size is 10, but more than 10 events are available." <<
                                                                     std::endl;
       }
+    }
   } else if (ret == RSMI_STATUS_NO_DATA) {
-    std::cout << "\tNo events were collected." << std::endl;
+    IF_VERB(STANDARD) {
+      std::cout << "\tNo events were collected." << std::endl;
+    }
   } else {
     // This should always fail. We want to print out the return code.
     EXPECT_EQ(ret, RSMI_STATUS_SUCCESS) <<
                   "Unexpected return code for rsmi_event_notification_get()";
+  }
+
+  // In case GPU Pre reset event was collected in the previous read,
+  // read again to get the GPU Post reset event.
+  if (read_again) {
+    ret = rsmi_event_notification_get(10000, &num_elem, data);
+    if (ret == RSMI_STATUS_SUCCESS || ret == RSMI_STATUS_INSUFFICIENT_SIZE) {
+      EXPECT_LE(num_elem, 10) <<
+              "Expected the number of elements found to be <= buffer size (10)";
+      IF_VERB(STANDARD) {
+        for (uint32_t i = 0; i < num_elem; ++i) {
+          std::cout << "\tdv_ind=" << data[i].dv_ind <<
+                     "  Type: " << NameFromEvtNotifType(data[i].event) <<
+                     "  Mesg: " << data[i].message << std::endl;
+        }
+      }
+      IF_VERB(STANDARD) {
+        if (ret == RSMI_STATUS_INSUFFICIENT_SIZE) {
+          std::cout <<
+          "\t\tBuffer size is 10, but more than 10 events are available." <<
+                                                                    std::endl;
+        }
+      }
+    } else if (ret == RSMI_STATUS_NO_DATA) {
+      IF_VERB(STANDARD) {
+        std::cout << "\tNo further events were collected." << std::endl;
+      }
+    } else {
+      // This should always fail. We want to print out the return code.
+      EXPECT_EQ(ret, RSMI_STATUS_SUCCESS) <<
+                  "Unexpected return code for rsmi_event_notification_get()";
+    }
   }
 
   for (uint32_t dv_ind = 0; dv_ind < num_monitor_devs(); ++dv_ind) {

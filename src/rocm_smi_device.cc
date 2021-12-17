@@ -57,6 +57,7 @@
 #include <vector>
 #include <memory>
 #include <algorithm>
+#include <iterator>
 
 #include "rocm_smi/rocm_smi_main.h"
 #include "rocm_smi/rocm_smi_device.h"
@@ -69,8 +70,16 @@
 namespace amd {
 namespace smi {
 
+// Debug root file path
+static const char *kPathDebugRootFName = "/sys/kernel/debug/dri/";
+
+// Device debugfs file names
+static const char *kDevGpuResetFName = "amdgpu_gpu_recover";
+
 // Device sysfs file names
 static const char *kDevPerfLevelFName = "power_dpm_force_performance_level";
+static const char *kDevDevProdNameFName = "product_name";
+static const char *kDevDevProdNumFName = "product_number";
 static const char *kDevDevIDFName = "device";
 static const char *kDevVendorIDFName = "vendor";
 static const char *kDevSubSysDevIDFName = "subsystem_device";
@@ -106,6 +115,7 @@ static const char *kDevMemBusyPercentFName = "mem_busy_percent";
 static const char *kDevXGMIErrorFName = "xgmi_error";
 static const char *kDevSerialNumberFName = "serial_number";
 static const char *kDevNumaNodeFName = "numa_node";
+static const char *kDevGpuMetricsFName = "gpu_metrics";
 
 // Firmware version files
 static const char *kDevFwVersionAsdFName = "fw_version/asd_fw_version";
@@ -205,11 +215,14 @@ static const char *kDevPerfLevelStandardStr = "profile_standard";
 static const char *kDevPerfLevelMinMClkStr = "profile_min_mclk";
 static const char *kDevPerfLevelMinSClkStr = "profile_min_sclk";
 static const char *kDevPerfLevelPeakStr = "profile_peak";
+static const char *kDevPerfLevelDeterminismStr = "perf_determinism";
 static const char *kDevPerfLevelUnknownStr = "unknown";
 
 static const std::map<DevInfoTypes, const char *> kDevAttribNameMap = {
     {kDevPerfLevel, kDevPerfLevelFName},
     {kDevOverDriveLevel, kDevOverDriveLevelFName},
+    {kDevDevProdName, kDevDevProdNameFName},
+    {kDevDevProdNum, kDevDevProdNumFName},
     {kDevDevID, kDevDevIDFName},
     {kDevVendorID, kDevVendorIDFName},
     {kDevSubSysDevID, kDevSubSysDevIDFName},
@@ -265,6 +278,8 @@ static const std::map<DevInfoTypes, const char *> kDevAttribNameMap = {
     {kDevSerialNumber, kDevSerialNumberFName},
     {kDevMemPageBad, kDevMemPageBadFName},
     {kDevNumaNode, kDevNumaNodeFName},
+    {kDevGpuMetrics, kDevGpuMetricsFName},
+    {kDevGpuReset, kDevGpuResetFName},
 };
 
 static const std::map<rsmi_dev_perf_level, const char *> kDevPerfLvlMap = {
@@ -276,6 +291,7 @@ static const std::map<rsmi_dev_perf_level, const char *> kDevPerfLvlMap = {
     {RSMI_DEV_PERF_LEVEL_STABLE_MIN_MCLK, kDevPerfLevelMinMClkStr},
     {RSMI_DEV_PERF_LEVEL_STABLE_MIN_SCLK, kDevPerfLevelMinSClkStr},
     {RSMI_DEV_PERF_LEVEL_STABLE_PEAK, kDevPerfLevelPeakStr},
+    {RSMI_DEV_PERF_LEVEL_DETERMINISM, kDevPerfLevelDeterminismStr},
 
     {RSMI_DEV_PERF_LEVEL_UNKNOWN, kDevPerfLevelUnknownStr},
 };
@@ -335,7 +351,8 @@ static const std::map<const char *, dev_depends_t> kDevFuncDependsMap = {
   {"rsmi_dev_vendor_id_get",             {{kDevVendorIDFName}, {}}},
 
   {"rsmi_dev_name_get",                  {{kDevVendorIDFName,
-                                                        kDevDevIDFName}, {}}},
+                                           kDevDevIDFName}, {}}},
+  {"rsmi_dev_sku_get",                   {{kDevDevProdNumFName}, {}}},
   {"rsmi_dev_brand_get",                 {{kDevVendorIDFName}, {}}},
   {"rsmi_dev_vendor_name_get",           {{kDevVendorIDFName}, {}}},
   {"rsmi_dev_serial_number_get",         {{kDevSerialNumberFName}, {}}},
@@ -360,10 +377,15 @@ static const std::map<const char *, dev_depends_t> kDevFuncDependsMap = {
   {"rsmi_dev_overdrive_level_get",       {{kDevOverDriveLevelFName}, {}}},
   {"rsmi_dev_power_profile_presets_get", {{kDevPowerProfileModeFName}, {}}},
   {"rsmi_dev_perf_level_set",            {{kDevPerfLevelFName}, {}}},
+  {"rsmi_dev_perf_level_set_v1",         {{kDevPerfLevelFName}, {}}},
   {"rsmi_dev_perf_level_get",            {{kDevPerfLevelFName}, {}}},
+  {"rsmi_perf_determinism_mode_set",     {{kDevPerfLevelFName,
+                                           kDevPowerODVoltageFName}, {}}},
   {"rsmi_dev_overdrive_level_set",       {{kDevOverDriveLevelFName}, {}}},
   {"rsmi_dev_vbios_version_get",         {{kDevVBiosVerFName}, {}}},
   {"rsmi_dev_od_volt_info_get",          {{kDevPowerODVoltageFName}, {}}},
+  {"rsmi_dev_od_volt_info_set",          {{kDevPowerODVoltageFName,
+                                           kDevPerfLevelFName},  {}}},
   {"rsmi_dev_od_volt_curve_regions_get", {{kDevPowerODVoltageFName}, {}}},
   {"rsmi_dev_ecc_enabled_get",           {{kDevErrCntFeaturesFName}, {}}},
   {"rsmi_dev_ecc_status_get",            {{kDevErrCntFeaturesFName}, {}}},
@@ -373,6 +395,8 @@ static const std::map<const char *, dev_depends_t> kDevFuncDependsMap = {
   {"rsmi_dev_xgmi_error_reset",          {{kDevXGMIErrorFName}, {}}},
   {"rsmi_dev_memory_reserved_pages_get", {{kDevMemPageBadFName}, {}}},
   {"rsmi_topo_numa_affinity_get",        {{kDevNumaNodeFName}, {}}},
+  {"rsmi_dev_gpu_metrics_info_get",      {{kDevGpuMetricsFName}, {}}},
+  {"rsmi_dev_gpu_reset",                 {{kDevGpuResetFName}, {}}},
 
   // These functions with variants, but no sensors/units. (May or may not
   // have mandatory dependencies.)
@@ -458,8 +482,9 @@ static const std::map<const char *, dev_depends_t> kDevFuncDependsMap = {
   if (X) return X; \
 }
 
-Device::Device(std::string p, RocmSMI_env_vars const *e) : monitor_(nullptr),
-                                   path_(p), env_(e), evt_notif_anon_fd_(-1) {
+Device::Device(std::string p, RocmSMI_env_vars const *e) :
+            monitor_(nullptr), path_(p), env_(e), evt_notif_anon_fd_(-1),
+                                                   gpu_metrics_ver_{0, 0, 0} {
 #ifdef NDEBUG
     env_ = nullptr;
 #endif
@@ -481,6 +506,33 @@ Device::Device(std::string p, RocmSMI_env_vars const *e) : monitor_(nullptr),
 
 Device:: ~Device() {
   shared_mutex_close(mutex_);
+}
+
+template <typename T>
+int Device::openDebugFileStream(DevInfoTypes type, T *fs, const char *str) {
+  std::string debugfs_path;
+
+  debugfs_path = kPathDebugRootFName;
+  debugfs_path += std::to_string(index());
+  debugfs_path += "/";
+  debugfs_path += kDevAttribNameMap.at(type);
+
+  DBG_FILE_ERROR(debugfs_path, str);
+  bool reg_file;
+  int ret = isRegularFile(debugfs_path, &reg_file);
+
+  if (ret != 0) {
+    return ret;
+  }
+  if (!reg_file) {
+    return ENOENT;
+  }
+
+  fs->open(debugfs_path);
+  if (!fs->is_open()) {
+      return errno;
+  }
+  return 0;
 }
 
 template <typename T>
@@ -521,6 +573,28 @@ int Device::openSysfsFileStream(DevInfoTypes type, T *fs, const char *str) {
   return 0;
 }
 
+int Device::readDebugInfoStr(DevInfoTypes type, std::string *retStr) {
+  std::ifstream fs;
+  std::string line;
+  int ret = 0;
+
+  assert(retStr != nullptr);
+
+  ret = openDebugFileStream(type, &fs);
+  if (ret != 0) {
+    return ret;
+  }
+
+  if (!(fs.peek() == std::ifstream::traits_type::eof())) {
+    getline(fs, line);
+    *retStr = line;
+  }
+
+  fs.close();
+
+  return 0;
+}
+
 int Device::readDevInfoStr(DevInfoTypes type, std::string *retStr) {
   std::ifstream fs;
   int ret = 0;
@@ -543,16 +617,21 @@ int Device::writeDevInfoStr(DevInfoTypes type, std::string valStr) {
   std::ofstream fs;
   int ret;
 
+  fs.rdbuf()->pubsetbuf(0,0);
   ret = openSysfsFileStream(type, &fs, valStr.c_str());
   if (ret != 0) {
     return ret;
   }
 
   // We'll catch any exceptions in rocm_smi.cc code.
-  fs << valStr;
+  if (fs << valStr) {
+    ret = RSMI_STATUS_SUCCESS;
+  } else {
+    ret = RSMI_STATUS_NOT_SUPPORTED;
+  }
   fs.close();
-
-  return 0;
+  
+  return ret;
 }
 
 rsmi_dev_perf_level Device::perfLvlStrToEnum(std::string s) {
@@ -571,6 +650,7 @@ int Device::writeDevInfo(DevInfoTypes type, uint64_t val) {
   switch (type) {
     // The caller is responsible for making sure "val" is within a valid range
     case kDevOverDriveLevel:  // integer between 0 and 20
+    case kDevPowerODVoltage:
     case kDevPowerProfileMode:
       return writeDevInfoStr(type, std::to_string(val));
       break;
@@ -621,6 +701,26 @@ int Device::readDevInfoLine(DevInfoTypes type, std::string *line) {
   return 0;
 }
 
+int Device::readDevInfoBinary(DevInfoTypes type, std::size_t b_size,
+                                void *p_binary_data) {
+  auto sysfs_path = path_;
+
+  FILE *ptr;
+  sysfs_path += "/device/";
+  sysfs_path += kDevAttribNameMap.at(type);
+  ptr  = fopen(sysfs_path.c_str(), "rb");
+  if (!ptr) {
+    return errno;
+  }
+
+  size_t num = fread(p_binary_data, b_size, 1, ptr);
+  fclose(ptr);
+  if ((num*b_size) != b_size) {
+    return ENOENT;
+  }
+  return 0;
+}
+
 int Device::readDevInfoMultiLineStr(DevInfoTypes type,
                                            std::vector<std::string> *retVec) {
   std::string line;
@@ -653,6 +753,8 @@ int Device::readDevInfo(DevInfoTypes type, uint64_t *val) {
 
   std::string tempStr;
   int ret;
+  int tmp_val;
+
   switch (type) {
     case kDevDevID:
     case kDevSubSysDevID:
@@ -665,7 +767,11 @@ int Device::readDevInfo(DevInfoTypes type, uint64_t *val) {
       if (tempStr == "") {
         return EINVAL;
       }
-      *val = std::stoi(tempStr, 0, 16);
+      tmp_val = std::stoi(tempStr, 0, 16);
+      if (tmp_val < 0) {
+        return EINVAL;
+      }
+      *val = static_cast<uint64_t>(tmp_val);
       break;
 
     case kDevUsage:
@@ -719,6 +825,11 @@ int Device::readDevInfo(DevInfoTypes type, uint64_t *val) {
       *val = std::stoul(tempStr, 0, 16);
       break;
 
+    case kDevGpuReset:
+      ret = readDebugInfoStr(type, &tempStr);
+      RET_IF_NONZERO(ret);
+      break;
+
     default:
       return EINVAL;
   }
@@ -751,6 +862,22 @@ int Device::readDevInfo(DevInfoTypes type, std::vector<std::string> *val) {
   return 0;
 }
 
+int Device::readDevInfo(DevInfoTypes type, std::size_t b_size,
+                                        void *p_binary_data) {
+  assert(p_binary_data != nullptr);
+
+  switch (type) {
+     case kDevGpuMetrics:
+      return readDevInfoBinary(type, b_size, p_binary_data);
+      break;
+
+    default:
+      return EINVAL;
+  }
+
+  return 0;
+}
+
 int Device::readDevInfo(DevInfoTypes type, std::string *val) {
   assert(val != nullptr);
 
@@ -758,6 +885,8 @@ int Device::readDevInfo(DevInfoTypes type, std::string *val) {
     case kDevPerfLevel:
     case kDevUsage:
     case kDevOverDriveLevel:
+    case kDevDevProdName:
+    case kDevDevProdNum:
     case kDevDevID:
     case kDevSubSysDevID:
     case kDevSubSysVendorID:
@@ -838,7 +967,12 @@ void Device::fillSupportedFuncs(void) {
     mand_depends_met = true;
     for (; dep != it->second.mandatory_depends.end(); dep++) {
       std::string dep_path = dev_rt + "/" + *dep;
-      if (!FileExists(dep_path.c_str())) {
+      std::string debugfs_path;
+      debugfs_path = kPathDebugRootFName;
+      debugfs_path += std::to_string(index());
+      debugfs_path += "/";
+      debugfs_path += *dep;
+      if (!FileExists(dep_path.c_str()) && !FileExists(debugfs_path.c_str())) {
         mand_depends_met = false;
         break;
       }
@@ -895,7 +1029,6 @@ bool Device::DeviceAPISupported(std::string name, uint64_t variant,
                                                        uint64_t sub_variant) {
   SupportedFuncMapIt func_it;
   VariantMapIt var_it;
-  SubVariantIt sub_var_it;
 
   fillSupportedFuncs();
   func_it = supported_funcs_.find(name);
@@ -934,7 +1067,8 @@ bool Device::DeviceAPISupported(std::string name, uint64_t variant,
       return subvariant_match(&(var_it->second), sub_variant);
     }
   }
-  assert(!"We should not reach here");
+  assert(false);  // We should not reach here
+
   return false;
 }
 

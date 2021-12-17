@@ -140,6 +140,19 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wextra")
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic")
 
+## Address Sanitize Flag
+if (${ADDRESS_SANITIZER})
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -g")
+    set(CMAKE_EXE_LINKER_FLAGS -fsanitize=address)
+
+    if (BUILD_SHARED_LIBS})
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -shared-libsan" )
+    else ()
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libsan" )
+    endif ()
+endif()
+
+
 #
 # Extend the compiler flags for 64-bit builds
 #
@@ -176,7 +189,7 @@ aux_source_directory(${RSMITST_ROOT}/functional functionalSources)
 # Specify the directory containing various libraries of ROCR
 # to be linked against for building ROC Perf applications
 #
-LINK_DIRECTORIES(${RSMI_LIB_DIR})
+LINK_DIRECTORIES(${RSMI_LIB_DIR} ${GTEST_LIB_DIR})
 
 #
 # Extend the list of libraries to be used for linking rsmi apps

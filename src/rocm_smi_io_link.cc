@@ -177,7 +177,14 @@ int DiscoverIOLinks(std::map<std::pair<uint32_t, uint32_t>,
   links->clear();
 
   auto kfd_node_dir = opendir(kKFDNodesPathRoot);
-  assert(kfd_node_dir != nullptr);
+
+  if (kfd_node_dir == nullptr) {
+    std::string err_msg = "Failed to open KFD nodes directory ";
+    err_msg += kKFDNodesPathRoot;
+    err_msg += ".";
+    perror(err_msg.c_str());
+    return 1;
+  }
 
   auto dentry_kfd = readdir(kfd_node_dir);
   while (dentry_kfd != nullptr) {
@@ -191,7 +198,7 @@ int DiscoverIOLinks(std::map<std::pair<uint32_t, uint32_t>,
       continue;
     }
 
-    uint32_t node_indx = std::stoi(dentry_kfd->d_name);
+    uint32_t node_indx = static_cast<uint32_t>(std::stoi(dentry_kfd->d_name));
     std::shared_ptr<IOLink> link;
     uint32_t link_indx;
     std::string io_link_path_root = IOLinkPathRoot(node_indx);
@@ -211,7 +218,7 @@ int DiscoverIOLinks(std::map<std::pair<uint32_t, uint32_t>,
         continue;
       }
 
-      link_indx = std::stoi(dentry_io_link->d_name);
+      link_indx = static_cast<uint32_t>(std::stoi(dentry_io_link->d_name));
       link = std::shared_ptr<IOLink>(new IOLink(node_indx, link_indx));
 
       link->Initialize();
@@ -222,6 +229,10 @@ int DiscoverIOLinks(std::map<std::pair<uint32_t, uint32_t>,
     }
 
     if (closedir(io_link_dir)) {
+      std::string err_msg = "Failed to close KFD nodes directory ";
+      err_msg += kKFDNodesPathRoot;
+      err_msg += ".";
+      perror(err_msg.c_str());
       return 1;
     }
 
@@ -263,7 +274,7 @@ int DiscoverIOLinksPerNode(uint32_t node_indx, std::map<uint32_t,
       continue;
     }
 
-    link_indx = std::stoi(dentry->d_name);
+    link_indx = static_cast<uint32_t>(std::stoi(dentry->d_name));
     link = std::shared_ptr<IOLink>(new IOLink(node_indx, link_indx));
 
     link->Initialize();
