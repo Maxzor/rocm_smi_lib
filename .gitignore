@@ -1,0 +1,13 @@
+# The main target for the upstream cmake build
+obj-x86_64-linux-gnu/
+# Independent Debian build artefacts
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/tmp/
+debian/*.substvars
+# Project-specific Debian build artefacts
+debian/librocm-smi-dev/
+debian/librocm-smi64-1/
+include/rocm_smi/rocm_smi64Config.h
+oam/include/oam/oamConfig.h

@@ -1,5 +1,12 @@
-rocm-smi-lib (3.5.0-1~exp1) UNRELEASED; urgency=medium
+rocm-smi-lib (4.5.2-1~exp1) UNRELEASED; urgency=medium
 
+  [ Norbert Preining ]
   * Initial release. (Closes: #960980)
+  * install doc files
 
- -- Norbert Preining <norbert@preining.info>  Wed, 03 Jun 2020 15:07:05 +0900
+  [ Maxime Chambonnet ]
+  * added watch file
+  * added watch file
+  * New upstream version 4.5.2
+
+ -- Maxime Chambonnet <maxzor@maxzor.eu>  Sat, 18 Dec 2021 00:17:00 +0100

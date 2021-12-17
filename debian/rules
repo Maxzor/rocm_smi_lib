@@ -3,3 +3,8 @@
 %:
 	dh $@ -Scmake
 
+override_dh_clean:
+#some stupid cmake wizardry, I'm pretty sure
+	rm -f include/rocm_smi/rocm_smi64Config.h
+	rm -f oam/include/oam/oamConfig.h
+	dh_clean

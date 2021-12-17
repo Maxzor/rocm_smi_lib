@@ -1,4 +1,3 @@
-usr/lib/librocm_smi64.so
-usr/include/rocm_smi
-usr/rocm_smi/docs/README.md usr/share/doc/librocm-smi-dev/
-usr/rocm_smi/docs/ROCm_SMI_Manual.pdf/refman.pdf usr/share/doc/librocm-smi-dev/
+usr/rocm_smi/lib/librocm_smi64.so usr/lib
+usr/rocm_smi/include usr/include
+usr/oam/include usr/include
