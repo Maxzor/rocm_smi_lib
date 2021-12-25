@@ -12,4 +12,7 @@ debian/librocm-smi64-1/
 debian/liboam-1/
 debian/liboam-dev/
 debian/librocm-smi-tools/
+# cmake artefacts...
+include/rocm_smi/rocm_smi64Config.h
+oam/include/oam/oamConfig.h
 
