@@ -30,3 +30,22 @@ Description: ROCm System Management Interface (ROCm SMI) Library - development f
  applications to monitor and control GPU applications.
  .
  This package contains the development headers.
+
+
+package: librocm-smi-tools
+Section: libdevel
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends},
+Description: TODO - python script
+
+Package: liboam-1
+Section: libs
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends},
+Description: TODO
+
+package: liboam-dev
+Section: libdevel
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends},
+Description: TODO

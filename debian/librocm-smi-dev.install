@@ -1,3 +1,2 @@
 usr/rocm_smi/lib/librocm_smi64.so usr/lib
 usr/rocm_smi/include usr/include
-usr/oam/include usr/include

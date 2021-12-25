@@ -9,5 +9,7 @@ debian/*.substvars
 # Project-specific Debian build artefacts
 debian/librocm-smi-dev/
 debian/librocm-smi64-1/
-include/rocm_smi/rocm_smi64Config.h
-oam/include/oam/oamConfig.h
+debian/liboam-1/
+debian/liboam-dev/
+debian/librocm-smi-tools/
+

@@ -1,0 +1,2 @@
+usr/bin/rocm_smi.py usr/bin
+usr/rocm_smi/bindings/rsmiBindings.py /usr/share/librocm-smi-tools
