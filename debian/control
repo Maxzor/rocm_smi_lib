@@ -25,7 +25,7 @@ Description: ROCm System Management Interface (ROCm SMI) Library
 package: librocm-smi-dev
 Section: libdevel
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, python3
+Depends: ${misc:Depends}, ${shlibs:Depends}
 Description: ROCm System Management Interface (ROCm SMI) Library - development files
  The ROCm System Management Interface Library, or ROCm SMI library,
  is part of the Radeon Open Compute ROCm software stack. It is a
@@ -38,12 +38,12 @@ Description: ROCm System Management Interface (ROCm SMI) Library - development f
 package: librocm-smi-tools
 Section: libdevel
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends},
-Description: TODO - python script
+Depends: ${misc:Depends}, ${shlibs:Depends}, python3:any
+Description: TODO - Python script
 
 Package: liboam1
 Section: libs
-Architecture: all
+Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends},
 Description: TODO
 

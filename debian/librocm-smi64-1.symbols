@@ -1,4 +1,5 @@
 librocm_smi64.so.1 librocm-smi64-1 #MINVER#
+* Build-Depends-Package: librocm-smi64-dev
  _Z15rsmi_test_sleepjj@Base 4.5.2
  _Z16rsmi_dev_sku_getjPt@Base 4.5.2
  _Z17shared_mutex_initPKcj@Base 4.5.2
