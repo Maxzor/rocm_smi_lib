@@ -1,14 +1,18 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Source: https://github.com/RadeonOpenCompute/rocm_smi_lib
 
 Files: *
+Copyright: 2014-2020, Advanced Micro Devices, Inc
+License: UnknownCopyrighted
+
+Files: tests/rocm_smi_test/gtest/*
 Copyright: 2003-2018, Google Inc
            2018, Google LLC
 License: BSD-3-clause
 
 Files: License.txt
-       example/*
        include/*
+       oam/include/*
+       oam/src/*
        src/*
        tests/rocm_smi_test/functional/*
        tests/rocm_smi_test/main.cc
@@ -18,7 +22,7 @@ Files: License.txt
        tests/rocm_smi_test/test_common.h
        tests/rocm_smi_test/test_utils.cc
        tests/rocm_smi_test/test_utils.h
-Copyright: 2014-2019, Advanced Micro Devices, Inc
+Copyright: 2014-2021, Advanced Micro Devices, Inc
 License: NCSA
 
 Files: tests/rocm_smi_test/gtest/googlemock/*
@@ -96,21 +100,18 @@ License: BSD-3-clause
 Comment: No explicit license found, using license(s) from:
  tests/rocm_smi_test/gtest/googletest/LICENSE
 
-Files: CMakeLists.txt
-       DEBIAN/*
-       RPM/*
-       cmake_modules/*
-       docs/*
-       tests/rocm_smi_test/CMakeLists.txt
-       tests/rocm_smi_test/rsmitst.exclude
-       tests/rocm_smi_test/run_build.sh
-Copyright: 2014-2017, Advanced Micro Devices, Inc
-License: UnknownCopyrighted
-
 Files: tests/rocm_smi_test/gtest/googlemock/scripts/generator/*
 Copyright: 2007-2009, Google Inc
            2007-2009, Neal Norwitz
 License: Apache-2
+
+Files: include/rocm_smi/kfd_ioctl.h
+       oam/include/oam/amd_oam.h
+       oam/include/oam/oam_mapi.h
+       oam/src/amd_oam.cc
+Copyright: 2014, Advanced Micro Devices, Inc
+           2020, Open Compute Project
+License: Expat
 
 Files: tests/rocm_smi_test/gtest/googlemock/scripts/generator/README
        tests/rocm_smi_test/gtest/googlemock/scripts/generator/README.cppclean
@@ -119,20 +120,11 @@ License: Apache-2
 Comment: No explicit license found, using license(s) from:
  tests/rocm_smi_test/gtest/googlemock/scripts/generator/LICENSE
 
-Files: src/shared_mutex/*
-License: Expat
-Comment: No explicit license found, using license(s) from:
- src/shared_mutex/LICENSE
-
-Files: src/shared_mutex/LICENSE
-Copyright: 2018, Oleg Yamnikov
-License: Expat
-
-Files: tests/rocm_smi_test/gtest/googlemock/scripts/upload.py
+Files: tests/rocm_smi_test/gtest/googletest/scripts/upload.py
 Copyright: 2007, Google Inc
 License: Apache-2
 
-Files: tests/rocm_smi_test/gtest/googletest/scripts/upload.py
+Files: tests/rocm_smi_test/gtest/googlemock/scripts/upload.py
 Copyright: 2007, Google Inc
 License: Apache-2
 
@@ -140,87 +132,89 @@ Files: tests/rocm_smi_test/gtest/googletest/m4/acx_pthread.m4
 License: GPL with AutoConf exception
 
 Files: debian/*
-Copyright: 2020, Norbert Preining <norbert@preining.info>
+License: Unknown
+
+Files: debian/liboam-dev/usr/include/*
+       debian/librocm-smi-dev/usr/include/*
+       debian/tmp/usr/oam/include/*
+       debian/tmp/usr/rocm_smi/include/*
+Copyright: 2014, Advanced Micro Devices, Inc
+           2020, Open Compute Project
 License: Expat
+
+Files: debian/liboam-1/usr/share/doc/liboam-1/copyright
+       debian/liboam-dev/usr/share/doc/liboam-dev/copyright
+       debian/librocm-smi-dev/usr/share/doc/librocm-smi-dev/copyright
+       debian/librocm-smi-tools/usr/share/doc/librocm-smi-tools/copyright
+       debian/librocm-smi64-1/usr/share/doc/librocm-smi64-1/copyright
+Copyright: 2014-2019, Advanced Micro Devices, Inc
+           2003-2018, Google Inc
+           2018, Google LLC
+           2007-2009, Neal Norwitz
+           2020, Norbert Preining <norbert@preining.info>
+           2018, Oleg Yamnikov
+License: BSD-3-clause or Expat or GPL
+
+Files: debian/librocm-smi-dev/usr/include/include/rocm_smi/rocm_smi.h
+       debian/librocm-smi-dev/usr/include/include/rocm_smi/rocm_smi64Config.h
+       debian/tmp/usr/rocm_smi/include/rocm_smi/rocm_smi.h
+       debian/tmp/usr/rocm_smi/include/rocm_smi/rocm_smi64Config.h
+Copyright: 2017, Advanced Micro Devices, Inc
+License: NCSA
 
 License: Apache-2
 Comment: Add the corresponding license text here
 
 License: BSD-3-clause
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. Neither the name of the University nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
+.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE HOLDERS OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+License: Expat
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+.
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+License: GPL
 Comment: Add the corresponding license text here
 
 License: GPL with AutoConf exception
 Comment: Add the corresponding license text here
 
-License: Expat
- Permission is hereby granted, free of charge, to any person obtaining a
- copy of this software and associated documentation files (the "Software"),
- to deal in the Software without restriction, including without limitation
- the rights to use, copy, modify, merge, publish, distribute, sublicense,
- and/or sell copies of the Software, and to permit persons to whom the
- Software is furnished to do so, subject to the following conditions:
- .
- The above copyright notice and this permission notice shall be included
- in all copies or substantial portions of the Software.
- .
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-License: BSD-3-Clause
- Redistribution and use in source and binary forms, with or without
- modification, are permitted provided that the following conditions
- are met:
- 1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
- 2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
- 3. Neither the name of the University nor the names of its contributors
-    may be used to endorse or promote products derived from this software
-    without specific prior written permission.
- .
- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE HOLDERS OR
- CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 License: NCSA
- The University of Illinois/NCSA
- Open Source License (NCSA)
- .
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to
- deal with the Software without restriction, including without limitation
- the rights to use, copy, modify, merge, publish, distribute, sublicense,
- and#or sell copies of the Software, and to permit persons to whom the
- Software is furnished to do so, subject to the following conditions:
- .
-  - Redistributions of source code must retain the above copyright notice,
-    this list of conditions and the following disclaimers.
-  - Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimers in
-    the documentation and#or other materials provided with the distribution.
-  - Neither the names of Advanced Micro Devices, Inc,
-    nor the names of its contributors may be used to endorse or promote
-    products derived from this Software without specific prior written
-    permission.
- .
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- THE CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
- OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
- ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- DEALINGS WITH THE SOFTWARE.
+Comment: Add the corresponding license text here
+

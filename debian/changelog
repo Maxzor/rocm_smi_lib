@@ -6,7 +6,6 @@ rocm-smi-lib (4.5.2-1~exp1) UNRELEASED; urgency=medium
 
   [ Maxime Chambonnet ]
   * added watch file
-  * added watch file
   * New upstream version 4.5.2
 
  -- Maxime Chambonnet <maxzor@maxzor.eu>  Sat, 18 Dec 2021 00:17:00 +0100
