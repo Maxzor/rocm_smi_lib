@@ -132,35 +132,9 @@ Files: tests/rocm_smi_test/gtest/googletest/m4/acx_pthread.m4
 License: GPL with AutoConf exception
 
 Files: debian/*
-License: Unknown
-
-Files: debian/liboam-dev/usr/include/*
-       debian/librocm-smi-dev/usr/include/*
-       debian/tmp/usr/oam/include/*
-       debian/tmp/usr/rocm_smi/include/*
-Copyright: 2014, Advanced Micro Devices, Inc
-           2020, Open Compute Project
+Copyright: 2020, Norbert Preining <norbert@preining.info>
+Copyright: 2021, Maxime Chambonnet <maxzor@maxzor.eu>
 License: Expat
-
-Files: debian/liboam-1/usr/share/doc/liboam-1/copyright
-       debian/liboam-dev/usr/share/doc/liboam-dev/copyright
-       debian/librocm-smi-dev/usr/share/doc/librocm-smi-dev/copyright
-       debian/librocm-smi-tools/usr/share/doc/librocm-smi-tools/copyright
-       debian/librocm-smi64-1/usr/share/doc/librocm-smi64-1/copyright
-Copyright: 2014-2019, Advanced Micro Devices, Inc
-           2003-2018, Google Inc
-           2018, Google LLC
-           2007-2009, Neal Norwitz
-           2020, Norbert Preining <norbert@preining.info>
-           2018, Oleg Yamnikov
-License: BSD-3-clause or Expat or GPL
-
-Files: debian/librocm-smi-dev/usr/include/include/rocm_smi/rocm_smi.h
-       debian/librocm-smi-dev/usr/include/include/rocm_smi/rocm_smi64Config.h
-       debian/tmp/usr/rocm_smi/include/rocm_smi/rocm_smi.h
-       debian/tmp/usr/rocm_smi/include/rocm_smi/rocm_smi64Config.h
-Copyright: 2017, Advanced Micro Devices, Inc
-License: NCSA
 
 License: Apache-2
 /usr/share/common-licenses/Apache-2.0
