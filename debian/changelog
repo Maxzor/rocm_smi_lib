@@ -2,13 +2,5 @@ rocm-smi-lib (4.5.2-1~exp1) UNRELEASED; urgency=medium
 
   [ Norbert Preining ]
   * Initial release. (Closes: #961006)
-  * install doc files
-
-  [ Maxime Chambonnet ]
-  * added watch file
-  * New upstream version 4.5.2
-  * Added three additional binary targets: liboam1,
-    liboam-dev and libsmi-tools
-  * Added symbol files
 
  -- Norbert Preining <norbert@preining.info>  Wed, 03 Jun 2020 15:07:05 +0900
