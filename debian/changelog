@@ -1,7 +1,7 @@
 rocm-smi-lib (4.5.2-1~exp1) UNRELEASED; urgency=medium
 
   [ Norbert Preining ]
-  * Initial release. (Closes: #960980)
+  * Initial release. (Closes: #1003270)
   * install doc files
 
   [ Maxime Chambonnet ]
