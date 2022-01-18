@@ -1,2 +1,2 @@
-usr/bin/rocm_smi.py usr/share/librocm-smi-tools
-usr/rocm_smi/bindings/rsmiBindings.py usr/share/librocm-smi-tools
+#!/usr/bin/dh-exec
+usr/bin/rocm_smi.py => usr/bin/roc-smi

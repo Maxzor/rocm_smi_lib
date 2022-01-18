@@ -11,6 +11,7 @@ Uploaders: Mo Zhou <lumin@debian.org>,
            Maxime Chambonnet <maxzor@maxzor.eu>,
 Build-Depends: debhelper-compat (= 13),
                cmake,
+               dh-exec,
 
 Package: librocm-smi64-1
 Section: libs

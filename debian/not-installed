@@ -1,3 +1,4 @@
 usr/bin/rsmiBindings.py
+usr/rocm_smi/bindings/rsmiBindings.py
 usr/bin/rocm-smi
 usr/lib/*
