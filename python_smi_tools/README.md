@@ -318,6 +318,7 @@ ue - Uncorrectable errors
 ce - Correctable errors
 
 ## Clock Type Descriptions
+
 | Clock type | Description                                                                                                                                                                        |
 |------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | DCEFCLK    | DCE (Display)                                                                                                                                                                      |
