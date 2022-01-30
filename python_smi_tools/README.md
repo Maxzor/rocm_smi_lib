@@ -238,32 +238,34 @@ Output options:
     NOTE: These values can vary based on the ASIC, and may include:
 
 
-      SCLK_PROFILE_ENABLE - Whether or not to apply the 3 following SCLK settings (0=disable,1=enable)
-          NOTE: This is a hidden field. If set to 0, the following 3 values are displayed as '-’
+  **SCLK_PROFILE_ENABLE** - Whether or not to apply the 3 following SCLK settings (0=disable,1=enable)
+      NOTE: This is a hidden field. If set to 0, the following 3 values are displayed as '-’
 
-| Setting           | Description                                        |
-|-------------------|----------------------------------------------------|
-| SCLK_UP_HYST      | Delay before sclk is increased (in milliseconds)   |
-| SCLK_DOWN_HYST    | Delay before sclk is decresed (in milliseconds)    |
-| SCLK_ACTIVE_LEVEL | Workload required before sclk levels change (in %) |
+| Setting                   | Description                                        |
+|---------------------------|----------------------------------------------------|
+| **SCLK_UP_HYST**          | Delay before sclk is increased (in milliseconds)   |
+| **SCLK_DOWN_HYST**        | Delay before sclk is decresed (in milliseconds)    |
+| **SCLK_ACTIVE_LEVEL**     | Workload required before sclk levels change (in %) |
 
-      MCLK_PROFILE_ENABLE  - Whether or not to apply the 3 following MCLK settings (0=disable,1=enable)
-          NOTE: This is a hidden field. If set to 0, the following 3 values are displayed as '-'
 
-| Setting           | Description                                        |
-|-------------------|----------------------------------------------------|
-| MCLK_UP_HYST      | Delay before mclk is increased (in milliseconds)   |
-| MCLK_DOWN_HYST    | Delay before mclk is decresed (in milliseconds)    |
-| MCLK_ACTIVE_LEVEL | Workload required before mclk levels change (in %) |
+  **MCLK_PROFILE_ENABLE**  - Whether or not to apply the 3 following MCLK settings (0=disable,1=enable)
+      NOTE: This is a hidden field. If set to 0, the following 3 values are displayed as '-'
+
+| Setting               | Description                                        |
+|-----------------------|----------------------------------------------------|
+| **MCLK_UP_HYST**      | Delay before mclk is increased (in milliseconds)   |
+| **MCLK_DOWN_HYST**    | Delay before mclk is decresed (in milliseconds)    |
+| **MCLK_ACTIVE_LEVEL** | Workload required before mclk levels change (in %) |
+
 
       Other settings:
 
-| Setting          | Description                                                               |
-|------------------|---------------------------------------------------------------------------|
-| BUSY_SET_POINT   | Threshold for raw activity level before levels change                     |
-| FPS              | Frames Per Second                                                         |
-| USE_RLC_BUSY     | When set to 1, DPM is switched up as long as RLC busy message is received |
-| MIN_ACTIVE_LEVEL | Workload required before levels change (in %)                             |
+| Setting              | Description                                                               |
+|----------------------|---------------------------------------------------------------------------|
+| **BUSY_SET_POINT**   | Threshold for raw activity level before levels change                     |
+| **FPS**              | Frames Per Second                                                         |
+| **USE_RLC_BUSY**     | When set to 1, DPM is switched up as long as RLC busy message is received |
+| **MIN_ACTIVE_LEVEL** | Workload required before levels change (in %)                             |
 
     NOTES:
         When a compute queue is detected, the COMPUTE Power Profile values will be automatically
