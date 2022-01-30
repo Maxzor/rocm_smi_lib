@@ -17,9 +17,9 @@ Package: librocm-smi64-1
 Section: libs
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends},
-Description: ROCm System Management Interface (ROCm SMI) Library
+Description: ROCm System Management Interface (ROCm SMI) library
  The ROCm System Management Interface Library, or ROCm SMI library,
- is part of the Radeon Open Compute ROCm software stack. It is a
+ is part of the Radeon Open Compute software stack. It is a
  C library for Linux that provides a user space interface for
  applications to monitor and control GPU applications.
 
@@ -27,10 +27,9 @@ package: librocm-smi-dev
 Section: libdevel
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends}
-Description: ROCm System Management Interface (ROCm SMI) Library - development files
- The ROCm System Management Interface Library, or ROCm SMI library,
- is part of the Radeon Open Compute ROCm software stack. It is a
- C library for Linux that provides a user space interface for
+Description: ROCm System Management Interface (ROCm SMI) library
+ ROCm SMI is part of the Radeon Open Compute software stack. It is a
+ C library for Linux that provides a user-space interface for
  applications to monitor and control GPU applications.
  .
  This package contains the development headers.
@@ -40,16 +39,28 @@ package: librocm-smi-tools
 Section: libdevel
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends}, python3:any
-Description: TODO - Python script
+Description: ROCm System Management Interface (ROCm SMI) command-line interface
+ This is the reference implementation from AMD, exposing the ROCm SMI library
+ to the user. It presents a python script, `roc-smi`.
 
 Package: liboam1
 Section: libs
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends},
-Description: TODO
+Description: Datacenter flavor of a GPU system-management API
+ OCP Accelerator Module (OAM), is an Open Compute Project (OCP) hardware
+ standard, used in datacenters and high-performance-computing (HPC) clusters.
+ This library is the sibling of the ROCm System Management Interface (SMI)
+ Application Programming Interface (API), targeted at OAMs. 
 
 package: liboam-dev
 Section: libdevel
 Architecture: all
 Depends: ${misc:Depends}, ${shlibs:Depends},
-Description: TODO
+Description: Datacenter flavor of a GPU system-management API
+ OCP Accelerator Module (OAM), is an Open Compute Project (OCP) hardware
+ standard, used in datacenters and high-performance-computing (HPC) clusters.
+ This library is the sibling of the ROCm System Management Interface (SMI)
+ Application Programming Interface (API), targeted at OAMs. 
+ .
+ This package contains the development headers.
