@@ -170,7 +170,7 @@ Output options:
 
 ## Detailed Option Descriptions
 
---setsclk/--setmclk # [# # ...]:
+`--setsclk/--setmclk # [# # ...]:`
     This allows you to set a mask for the levels. For example, if a GPU has 8 clock levels,
     you can set a mask to use levels 0, 5, 6 and 7 with --setsclk 0 5 6 7 . This will only
     use the base level, and the top 3 clock levels. This will allow you to keep the GPU at
@@ -258,7 +258,7 @@ Output options:
 | **MCLK_ACTIVE_LEVEL** | Workload required before mclk levels change (in %) |
 
 
-      Other settings:
+  Other settings:
 
 | Setting              | Description                                                               |
 |----------------------|---------------------------------------------------------------------------|
